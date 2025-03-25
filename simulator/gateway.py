@@ -3,6 +3,7 @@ import json
 import random
 import time
 import logging
+import asyncio
 from datetime import datetime
 
 class Gateway:
@@ -23,10 +24,9 @@ class Gateway:
         # 0x00 = This means push uplink (as in the older Semtech protocol doc).
         return b'\x02' + token.to_bytes(2, byteorder="big") + b'\x00' + bytes.fromhex(self.eui)
 
-    def send_uplink(self, base64_payload):
+    def send_uplink_blocking(self, base64_payload):
         """
-        Sends a LoRaWAN uplink (PHYPayload in base64) wrapped in the
-        packet-forwarder JSON structure (rxpk).
+        Blocking method: builds the message and sends it via UDP. 
         """
         token = random.randint(0, 65535)
         header = self._create_udp_header(token)
@@ -52,3 +52,16 @@ class Gateway:
         self.sock.sendto(message, (self.udp_ip, self.udp_port))
 
         self.logger.info(f"Gateway EUI={self.eui} sent uplink with token={token}.")
+
+
+    async def send_uplink_async(self, base64_payload):
+        """
+        Async wrapper that offloads the blocking 'send_uplink_blocking' call 
+        to a ThreadPoolExecutor, so it doesn't block the event loop.
+        """
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(
+            None,  # default executor
+            self.send_uplink_blocking, 
+            base64_payload
+        )

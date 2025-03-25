@@ -9,11 +9,12 @@ class Device:
     Stores DevAddr, NWK_SKEY, APP_SKEY, and frame counter.
     Builds the uplink PHYPayload (encrypted, MIC'd) as base64.
     """
-    def __init__(self, dev_addr, nwk_skey, app_skey):
+    def __init__(self, dev_addr, nwk_skey, app_skey, send_interval=10):
         self.logger = logging.getLogger(__name__)
         self.dev_addr = dev_addr
         self.nwk_skey = nwk_skey
         self.app_skey = app_skey
+        self.send_interval = send_interval
         self.frame_counter = 0
 
     def build_uplink_payload(self):
