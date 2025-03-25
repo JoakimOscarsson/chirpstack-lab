@@ -1,5 +1,6 @@
 import logging
 import asyncio
+import time
 
 from config import parse_config
 from gateway import Gateway
@@ -32,6 +33,9 @@ async def main_async():
         udp_ip=gateway_cfg["udp_ip"],
         udp_port=gateway_cfg["udp_port"]
     )
+
+    #Set up async transport
+    await gateway.setup_async()
 
     # Create the DeviceManager (managing one device for now)
     device_manager = DeviceManager(
