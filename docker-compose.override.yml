@@ -1,0 +1,24 @@
+services:
+  simulator:
+    build:
+      context: ./simulator
+    depends_on:
+      - chirpstack-gateway-bridge
+    environment:
+      - UDP_IP=chirpstack-gateway-bridge
+      - UDP_PORT=1700
+      - GATEWAY_EUI=0102030405060708
+      - DEVADDR=26011BDA
+      - SEND_INTERVAL=10
+    restart: unless-stopped
+  mqtt-subscriber:
+    build:
+      context: ./mqtt-subscriber
+    depends_on:
+      - mosquitto
+    environment:
+      - MQTT_HOST=mosquitto
+      - MQTT_PORT=1883
+      - MQTT_USERNAME=chirpstack
+      - MQTT_PASSWORD=chirpstack
+    restart: unless-stopped
