@@ -4,12 +4,16 @@ services:
       context: ./simulator
     depends_on:
       - chirpstack-gateway-bridge
-    environment:
-      - UDP_IP=chirpstack-gateway-bridge
-      - UDP_PORT=1700
-      - GATEWAY_EUI=0102030405060708
-      - DEVADDR=26011BDA
-      - SEND_INTERVAL=10
+    # Specify env vars here to override the built-in defaults
+    # environment:
+    #  - UDP_IP=chirpstack-gateway-bridge
+    #  - UDP_PORT=1700
+    #  - GATEWAY_EUI=0102030405060708
+    #  - DEVADDR=26011BDA
+    #  - SEND_INTERVAL=10
+    command: ["python", "-u", "main.py", "--config", "conf.yaml"]
+    volumes:
+      - ./simulator/conf.yaml:/app/conf.yaml:ro
     restart: unless-stopped
   mqtt-subscriber:
     build:

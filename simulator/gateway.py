@@ -44,12 +44,12 @@ class GatewayProtocol(asyncio.DatagramProtocol):
         self.logger.error(f"UDP error received: {exc}")
 
     def connection_lost(self, exc):
-        self.logger.info("Socket closed, stop the event loop if needed.")
+        self.logger.warning("GatewayProtocol connection lost")
 
 
 class Gateway:
     """
-    Simulates the Semtech UDP Packet Forwarder side with fully async UDP.
+    Simulates the LoRa UDP Packet Forwarder side with fully async UDP.
     """    
     def __init__(self, eui, udp_ip, udp_port):
         self.logger = logging.getLogger(__name__)

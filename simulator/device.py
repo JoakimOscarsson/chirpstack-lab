@@ -29,7 +29,7 @@ class Device:
         fctrl = b'\x00'
         fcnt = struct.pack('<H', self.frame_counter)
         fport = b'\x01'
-        payload = b'Simulator says hello through ChripStack!'
+        payload = b'Simulator says hello!'
 
         encrypted = encrypt_payload(payload, app_skey_bytes, devaddr_bytes, self.frame_counter)
         mac_payload = devaddr_bytes[::-1] + fctrl + fcnt + fport + encrypted

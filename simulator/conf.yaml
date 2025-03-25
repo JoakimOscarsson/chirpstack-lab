@@ -1,0 +1,10 @@
+gateway:
+  eui: "0102030405060708"
+  udp_ip: "chirpstack-gateway-bridge"
+  udp_port: 1700
+
+devices:
+  - devaddr: "26011BDA"
+    send_interval: 5
+
+  - devaddr: "26011BDB"

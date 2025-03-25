@@ -18,7 +18,7 @@ async def main_async():
     # Parse configuration (Defaults, env, YAML, CLI)
     cfg = parse_config()
     gateway_cfg = cfg["gateway"]
-    device_cfg = cfg["device_defaults"]  # single device right now
+    devices_list = cfg["devices"]  # Contans at least 1 device
 
     # Create the Gateway
     gateway = Gateway(
@@ -28,18 +28,22 @@ async def main_async():
     )
     await gateway.setup_async()
 
-    # Create the DeviceManager (managing one device for now)
-    device_manager = DeviceManager(
-        gateway=gateway,
-        dev_addr=device_cfg["devaddr"],
-        nwk_skey=device_cfg["nwk_skey"],
-        app_skey=device_cfg["app_skey"],
-        send_interval=device_cfg["send_interval"]
-    )
+    # Create the DeviceManager
+    device_manager = DeviceManager(gateway)
+    logger.info(f"Config has {len(devices_list)} device(s).")
+
+    for dev_conf in devices_list:
+        device_manager.add_device(
+            dev_addr=dev_conf["devaddr"],
+            nwk_skey=dev_conf["nwk_skey"],
+            app_skey=dev_conf["app_skey"],
+            send_interval=dev_conf["send_interval"]
+        )
+    
 
     # Start the device manager's asynchronous loop
     # This call won't return until KeyboardInterrupt or an error
-    await device_manager.run_single_device_loop()
+    await device_manager.start_all_devices_async()
 
 
 async def shutdown(loop, logger, tasks, gateway):

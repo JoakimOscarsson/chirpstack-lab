@@ -4,28 +4,35 @@ from device import Device
 
 class DeviceManager:
     """
-    Manages one or more LoRaWAN devices. For now, we only create one device
-    in main.py, but this can be easily extended.
+    Manages one or more LoRaWAN devices.
     """
-    def __init__(self, gateway, dev_addr, nwk_skey, app_skey, send_interval):
+    def __init__(self, gateway):
         self.logger = logging.getLogger(__name__)
         self.gateway = gateway
-        # For future expansion, we could store multiple devices in a list.
-        self.device = Device(dev_addr, nwk_skey, app_skey, send_interval)
+        self.devices = []
+        self.device_tasks = []
 
-    async def run_single_device_loop(self):
-        """
-        Asynchronously run a loop that sends an uplink for our single device
-        every 'send_interval' seconds.
-        """
+    def add_device(self, dev_addr, nwk_skey, app_skey, send_interval):
+        device = Device(dev_addr, nwk_skey, app_skey, send_interval)
+        self.devices.append(device)
+        self.logger.info(f"Added device {dev_addr} with interval={send_interval}.")
+
+    async def start_all_devices_async(self):
+        loop = asyncio.get_running_loop()
+        for dev in self.devices:
+            task = loop.create_task(self.run_device_loop(dev))
+            self.device_tasks.append(task)
+
+        self.logger.info(f"Spawned {len(self.device_tasks)} device task(s).")
+        # Wait for them all to finish (they won't unless canceled)
+        await asyncio.gather(*self.device_tasks)
+
+    async def run_device_loop(self, device):
         while True:
-            base64_payload = self.device.build_uplink_payload()
-            # Non-blocking send using the Gateway's async method
-            await self.gateway.send_uplink_async(base64_payload)
-
+            encoded = device.build_uplink_payload()
+            await self.gateway.send_uplink_async(encoded)
             try:
-            # Sleep for the device's interval
-                await asyncio.sleep(self.device.send_interval)
+                await asyncio.sleep(device.send_interval)
             except asyncio.CancelledError:
-                self.logger.info("DeviceManager shutting down.")
+                self.logger.info(f"Device {device.dev_addr} shutting down.")
                 break
