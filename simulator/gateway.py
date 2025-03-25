@@ -118,6 +118,17 @@ class Gateway:
 
 
 
+    async def close_async(self):
+        """
+        Close the UDP transport if it's open.
+        """
+        self.logger.info("Closing gateway UDP transport...")
+        if self.transport is not None:
+            self.transport.close()
+            await asyncio.sleep(0.1)
+        self.logger.info("Gateway transport closed.")
+
+
     def _create_udp_header(self, token):
         # 0x02 = PULL_DATA identifier (for push from gateway to server)
         # 0x00 = This means push uplink (as in the older Semtech protocol doc).

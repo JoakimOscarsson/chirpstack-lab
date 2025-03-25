@@ -23,5 +23,9 @@ class DeviceManager:
             # Non-blocking send using the Gateway's async method
             await self.gateway.send_uplink_async(base64_payload)
 
+            try:
             # Sleep for the device's interval
-            await asyncio.sleep(self.device.send_interval)
+                await asyncio.sleep(self.device.send_interval)
+            except asyncio.CancelledError:
+                self.logger.info("DeviceManager shutting down.")
+                break
