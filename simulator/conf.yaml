@@ -7,4 +7,4 @@ devices:
   - devaddr: "26011BDA"
     send_interval: 5
 
-  - devaddr: "26011BDB"
+#  - devaddr: "26011BDB"

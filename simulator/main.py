@@ -18,20 +18,24 @@ async def main_async():
     # Parse configuration (Defaults, env, YAML, CLI)
     cfg = parse_config()
     gateway_cfg = cfg["gateway"]
-    devices_list = cfg["devices"]  # Contans at least 1 device
+    devices_list = cfg["devices"]
 
-    # Create the Gateway
+    # Create the DeviceManager (initially without gateway)
+    device_manager = DeviceManager(None)
+
+    # Create the Gateway and wire the downlink handler to DeviceManager
     gateway = Gateway(
         eui=gateway_cfg["eui"],
         udp_ip=gateway_cfg["udp_ip"],
-        udp_port=gateway_cfg["udp_port"]
+        udp_port=gateway_cfg["udp_port"],
+        downlink_handler=device_manager.dispatch_downlink
     )
+    device_manager.gateway = gateway  # Set after gateway is created
     await gateway.setup_async()
+    asyncio.create_task(gateway.pull_data_loop())
 
-    # Create the DeviceManager
-    device_manager = DeviceManager(gateway)
+    # Register all devices
     logger.info(f"Config has {len(devices_list)} device(s).")
-
     for dev_conf in devices_list:
         device_manager.add_device(
             dev_addr=dev_conf["devaddr"],
@@ -42,7 +46,6 @@ async def main_async():
     
 
     # Start the device manager's asynchronous loop
-    # This call won't return until KeyboardInterrupt or an error
     await device_manager.start_all_devices_async()
 
 

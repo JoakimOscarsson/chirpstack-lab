@@ -2,7 +2,7 @@ import struct
 from Crypto.Cipher import AES
 from Crypto.Hash import CMAC
 
-def encrypt_payload(payload: bytes, app_skey: bytes, devaddr: bytes, fcnt: int) -> bytes:
+def encrypt_payload(payload: bytes, app_skey: bytes, devaddr: bytes, fcnt: int, direction: int) -> bytes:
     """
     LoRaWAN FRMPayload encryption (Appendix A.3 of LoRaWAN spec).
     - payload: the plaintext FRMPayload
@@ -19,10 +19,8 @@ def encrypt_payload(payload: bytes, app_skey: bytes, devaddr: bytes, fcnt: int) 
     while len(enc) < size:
         a_block = bytearray(16)
         a_block[0] = 0x01
-        a_block[5] = 0x00
-        # DevAddr in little-endian
+        a_block[5] = direction  # 0 = uplink, 1 = downlink
         a_block[6:10] = devaddr[::-1]
-        # Frame counter in little-endian
         a_block[10:12] = struct.pack('<H', fcnt)
         a_block[15] = i
 

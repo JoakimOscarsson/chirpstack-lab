@@ -11,10 +11,12 @@ class DeviceManager:
         self.gateway = gateway
         self.devices = []
         self.device_tasks = []
+        self.device_map = {}
 
     def add_device(self, dev_addr, nwk_skey, app_skey, send_interval):
         device = Device(dev_addr, nwk_skey, app_skey, send_interval)
         self.devices.append(device)
+        self.device_map[dev_addr] = device
         self.logger.info(f"Added device {dev_addr} with interval={send_interval}.")
 
     async def start_all_devices_async(self):
@@ -36,3 +38,16 @@ class DeviceManager:
             except asyncio.CancelledError:
                 self.logger.info(f"Device {device.dev_addr} shutting down.")
                 break
+
+    def dispatch_downlink(self, raw_payload):
+        self.logger.debug("in dispatch_downlink")
+        if len(raw_payload) < 5:
+            self.logger.warning("payload < 5")
+            return
+        devaddr = raw_payload[1:5][::-1].hex().upper()
+        device = self.device_map.get(devaddr)
+        if device:
+            self.logger.debug("Found the device!")
+            device.handle_downlink_payload(raw_payload)
+        else:
+            self.logger.debug("device not in list")
