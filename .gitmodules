@@ -1,0 +1,3 @@
+[submodule "chirpstack-docker"]
+	path = chirpstack-docker
+	url = https://github.com/chirpstack/chirpstack-docker.git

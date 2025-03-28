@@ -32,7 +32,7 @@ async def main_async():
     )
     device_manager.gateway = gateway  # Set after gateway is created
     await gateway.setup_async()
-    asyncio.create_task(gateway.pull_data_loop())
+    #asyncio.create_task(gateway.pull_data_loop())  # Uncomment to start signaling ready for downlink!
 
     # Register all devices
     logger.info(f"Config has {len(devices_list)} device(s).")

@@ -1,10 +1,39 @@
 services:
+  simulator:
+    build:
+      context: ./simulator
+    depends_on:
+      - chirpstack-gateway-bridge
+    # Specify env vars here to override the built-in defaults
+    # environment:
+    #  - UDP_IP=chirpstack-gateway-bridge
+    #  - UDP_PORT=1700
+    #  - GATEWAY_EUI=0102030405060708
+    #  - DEVADDR=26011BDA
+    #  - SEND_INTERVAL=10
+    command: ["python", "-u", "main.py", "--config", "conf.yaml"]
+    volumes:
+      - ./simulator/conf.yaml:/app/conf.yaml:ro
+    restart: unless-stopped
+
+ # mqtt-subscriber:
+ #   build:
+ #     context: ./mqtt-subscriber
+ #   depends_on:
+ #     - mosquitto
+ #   environment:
+ #     - MQTT_HOST=mosquitto
+ #     - MQTT_PORT=1883
+ #     - MQTT_USERNAME=chirpstack
+ #     - MQTT_PASSWORD=chirpstack
+ #   restart: unless-stopped
+
   chirpstack:
     image: chirpstack/chirpstack:4
     command: -c /etc/chirpstack
     restart: unless-stopped
     volumes:
-      - ./configuration/chirpstack:/etc/chirpstack
+      - ./chirpstack-docker/configuration/chirpstack:/etc/chirpstack
     depends_on:
       - postgres
       - mosquitto
@@ -22,14 +51,14 @@ services:
     ports:
       - "1700:1700/udp"
     volumes:
-      - ./configuration/chirpstack-gateway-bridge:/etc/chirpstack-gateway-bridge
+      - ./chirpstack-docker/configuration/chirpstack-gateway-bridge:/etc/chirpstack-gateway-bridge
     environment:
       - INTEGRATION__MQTT__EVENT_TOPIC_TEMPLATE=eu868/gateway/{{ .GatewayID }}/event/{{ .EventType }}
       - INTEGRATION__MQTT__STATE_TOPIC_TEMPLATE=eu868/gateway/{{ .GatewayID }}/state/{{ .StateType }}
       - INTEGRATION__MQTT__COMMAND_TOPIC_TEMPLATE=eu868/gateway/{{ .GatewayID }}/command/#
     depends_on:
       - mosquitto
-  
+
   chirpstack-gateway-bridge-basicstation:
     image: chirpstack/chirpstack-gateway-bridge:4
     restart: unless-stopped
@@ -37,10 +66,9 @@ services:
     ports:
       - "3001:3001"
     volumes:
-      - ./configuration/chirpstack-gateway-bridge:/etc/chirpstack-gateway-bridge
+      - ./chirpstack-docker/configuration/chirpstack-gateway-bridge:/etc/chirpstack-gateway-bridge
     depends_on:
       - mosquitto
-
   chirpstack-rest-api:
     image: chirpstack/chirpstack-rest-api:4
     restart: unless-stopped
@@ -54,12 +82,19 @@ services:
     image: postgres:14-alpine
     restart: unless-stopped
     volumes:
-      - ./configuration/postgresql/initdb:/docker-entrypoint-initdb.d
+      - ./chirpstack-docker/configuration/postgresql/initdb:/docker-entrypoint-initdb.d
       - postgresqldata:/var/lib/postgresql/data
     environment:
       - POSTGRES_USER=chirpstack
       - POSTGRES_PASSWORD=chirpstack
       - POSTGRES_DB=chirpstack
+    command: >
+      bash -c "
+        docker-entrypoint.sh postgres & 
+        until pg_isready -U chirpstack; do sleep 1; done; 
+        psql -U chirpstack -d chirpstack -c 'CREATE EXTENSION IF NOT EXISTS pg_trgm';
+        wait
+      "
 
   redis:
     image: redis:7-alpine
@@ -73,8 +108,8 @@ services:
     restart: unless-stopped
     ports:
       - "1883:1883"
-    volumes: 
-      - ./configuration/mosquitto/config/:/mosquitto/config/
+    volumes:
+      - ./chirpstack-docker/configuration/mosquitto/config/:/mosquitto/config/
 
 volumes:
   postgresqldata:

@@ -40,7 +40,7 @@ class GatewayProtocol(asyncio.DatagramProtocol):
         """
         If you want to handle inbound messages (downlinks), parse them here.
         """
-        self.logger.info(f"Received downlink if proto_id: {data[3]}.")
+        self.logger.info(f"Received downlink with proto_id: {data[3]}.")
         if len(data) < 4:
             self.logger.warning("Received malformed UDP packet.")
             return
