@@ -38,14 +38,15 @@ class DeviceManager:
         """
         Stub: Dispatch incoming downlink to the appropriate device based on DevAddr.
         """
-        self.logger.info("[DeviceManager] dispatch_downlink() - stub logic.")
+        self.logger.debug("dispatch_downlink triggered")
         if len(raw_payload) < 5:
             self.logger.warning("payload < 5 bytes, ignoring.")
             return
         devaddr = raw_payload[1:5][::-1].hex().upper()
-        device = self.device_map.get(devaddr)
+        device = self.device_map.get(devaddr).lorawan_module  # TODO: Make unaware of lorawan_modules. make an interface
         if device:
             self.logger.info(f"Forwarding downlink to device {devaddr}")
-            asyncio.create_task(device.receive_downlink(raw_payload))
+            #asyncio.create_task(device.receive_downlink(raw_payload))
+            asyncio.create_task(device.handle_downlink_payload(raw_payload))
         else:
             self.logger.debug(f"No matching device found for DevAddr={devaddr}")

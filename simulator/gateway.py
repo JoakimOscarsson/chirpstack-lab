@@ -37,13 +37,10 @@ class GatewayProtocol(asyncio.DatagramProtocol):
         self.transport.sendto(data, (self.remote_ip, self.remote_port))
 
     def datagram_received(self, data, addr):
-        """
-        If you want to handle inbound messages (downlinks), parse them here.
-        """
-        self.logger.info(f"Received downlink with proto_id: {data[3]}.")
         if len(data) < 4:
             self.logger.warning("Received malformed UDP packet.")
             return
+        self.logger.info(f"Received downlink with proto_id: {data[3]}.")
 
         proto_id = data[3]
         if proto_id == 0x03:  # PULL_RESP

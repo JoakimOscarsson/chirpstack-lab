@@ -2,6 +2,7 @@ import logging
 import struct
 import base64
 from utils import encrypt_payload, calculate_mic
+from mac_commands import parse_mac_commands
 
 logger = logging.getLogger(__name__)
 
@@ -94,20 +95,56 @@ class LoRaWANModule:
         else:
             logger.warning("[LoRaWANModule] No RF interface set; uplink not sent.")
 
-    def handle_downlink_payload(self, raw_bytes: bytes) -> bool:
-        logger.info("[LoRaWANModule] handle_downlink_payload() not implemented")
-        return False
+    async def handle_downlink_payload(self, raw_bytes):
+        logger.debug(f"{self.dev_addr} received raw downlink: {raw_bytes.hex()}")
+        mtype = raw_bytes[0] >> 5
+        if mtype not in (0b011, 0b101):
+            logger.info("Downlink rejected: not an Unconfirmed/Confirmed Down")
+            return False
 
-    def parse_mac_commands(self, payload: bytes):
-        logger.info("[LoRaWANModule] parse_mac_commands() not implemented")
+        devaddr = raw_bytes[1:5][::-1].hex().upper()
+        logger.debug(f"Extracted DevAddr from downlink: {devaddr}")
+        if devaddr != self.dev_addr:
+            logger.warning(f"DevAddr mismatch: got {devaddr}, expected {self.dev_addr}")
+            return False
+
+        fctrl = raw_bytes[5]
+        fopts_len = fctrl & 0x0F
+        fcnt_bytes = raw_bytes[6:8]
+        fcnt = struct.unpack('<H', fcnt_bytes)[0]
+
+        fport_index = 8 + fopts_len
+        if fport_index >= len(raw_bytes) - 4:
+            logger.warning("Downlink malformed: FPort index exceeds payload length")
+            return False
+
+        fport = raw_bytes[fport_index]
+        payload = raw_bytes[fport_index + 1:-4]  # Strip MIC
+
+        if fport == 0:
+            decrypted = self._decrypt_frmpayload(payload, fcnt=fcnt, is_nwk=True)
+            commands = parse_mac_commands(decrypted)
+            for cmd in commands:
+                logger.info(
+                    f"MAC Command {cmd.name} (CID 0x{cmd.cid:02X}) → {cmd.decoded}"
+                )
+        else:
+            logger.info(f"Device {self.dev_addr} received app payload (port {fport}): {payload}")
+
+        return True
+
+    def _decrypt_frmpayload(self, data: bytes, fcnt: int, is_nwk: bool = False) -> bytes:
+        devaddr_bytes = bytes.fromhex(self.dev_addr)
+        key = self.nwk_skey if is_nwk else self.app_skey
+        key_bytes = bytes.fromhex(key)
+        direction = 1  # downlink
+        decrypted = encrypt_payload(data, key_bytes, devaddr_bytes, fcnt, direction)
+        logger.info(f"Decrypted FRMPayload: {decrypted.hex()}")
+        return decrypted
 
     def queue_mac_response(self, cid: int, payload: bytes):
         logger.info(f"[LoRaWANModule] queue_mac_response() not implemented for CID 0x{cid:02X}")
 
-    # TODO: Move to utils if not already
-    def decrypt_payload(self, data: bytes, fcnt: int, fport: int) -> bytes:
-        logger.info("[LoRaWANModule] decrypt_payload() not implemented")
-        return data
 
     def parse_packet(self, raw: bytes):
         logger.info("[LoRaWANModule] parse_packet() not implemented")

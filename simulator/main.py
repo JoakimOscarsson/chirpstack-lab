@@ -1,13 +1,30 @@
-import logging
 import asyncio
+import logging
 import signal
 
 from config import parse_config
 from gateway import Gateway
 from device_manager import DeviceManager
 
-async def main_async():
-    # Configure the root logger with a simple format and INFO level
+async def shutdown(device_task, gateway, logger):
+    """
+    Perform graceful shutdown by cancelling tasks and closing the gateway.
+    """
+    logger.info("Initiating graceful shutdown...")
+    
+    # Cancel the device manager's task
+    device_task.cancel()
+    try:
+        await device_task
+    except asyncio.CancelledError:
+        logger.info("Device tasks cancelled.")
+    
+    # Close the gateway's transport gracefully
+    await gateway.close_async()
+    logger.info("Shutdown complete.")
+
+async def main():
+    # Configure logging
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
@@ -15,7 +32,7 @@ async def main_async():
     logger = logging.getLogger(__name__)
     logger.info("🚀 Starting LoRaWAN simulator")
 
-    # Parse configuration (Defaults, env, YAML, CLI)
+    # Parse configuration
     cfg = parse_config()
     gateway_cfg = cfg["gateway"]
     devices_list = cfg["devices"]
@@ -32,9 +49,8 @@ async def main_async():
     )
     device_manager.gateway = gateway  # Set after gateway is created
     await gateway.setup_async()
-    #asyncio.create_task(gateway.pull_data_loop())  # Uncomment to start signaling ready for downlink!
+    asyncio.create_task(gateway.pull_data_loop())
 
-    # Register all devices
     logger.info(f"Config has {len(devices_list)} device(s).")
     for dev_conf in devices_list:
         device_manager.add_device(
@@ -43,65 +59,32 @@ async def main_async():
             app_skey=dev_conf["app_skey"],
             send_interval=dev_conf["send_interval"]
         )
-    
 
     # Start the device manager's asynchronous loop
-    await device_manager.start_all_devices_async()
+    device_task = asyncio.create_task(device_manager.start_all_devices_async())
 
+    # Create an event to signal shutdown
+    shutdown_event = asyncio.Event()
 
-async def shutdown(loop, logger, tasks, gateway):
-    """
-    Cancel running tasks, signal device(s) to stop, and close the gateway gracefully.
-    """
-    logger.info("Graceful shutdown initiated...")
+    # Define a signal handler that sets the shutdown event
+    def _signal_handler():
+        logger.info("Shutdown signal received.")
+        shutdown_event.set()
 
-    # 1. Cancel running tasks (except this one)
-    for task in tasks:
-        if task is not asyncio.current_task():
-            task.cancel()
+    loop = asyncio.get_running_loop()
+    loop.add_signal_handler(signal.SIGINT, _signal_handler)
+    loop.add_signal_handler(signal.SIGTERM, _signal_handler)
 
-    # 2. Wait briefly for tasks to cancel
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-    logger.debug(f"Task cancellation results: {results}")
-
-    # 3. Close gateway transport
-    if gateway is not None:
-        await gateway.close_async()
-
-    # 4. Stop the event loop
-    loop.stop()
-    logger.info("Event loop stopped.")
-
-
-def main():
-    logger = logging.getLogger(__name__)
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-
-    gateway = None  # We'll capture a reference so we can close it in shutdown
-
-    # Create a task for main_async
-    main_task = loop.create_task(main_async())
-
-    # Signal handlers for graceful shutdown
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(
-            sig, 
-            lambda s=sig: asyncio.create_task(
-                shutdown(
-                    loop=loop,
-                    logger=logger,
-                    tasks=asyncio.all_tasks(loop),
-                    gateway=gateway
-                )
-            )
-        )
-
-    try:
-        loop.run_forever()
-    finally:
-        loop.close()
-        logger.info("🛑 Simulator stopped.")
+    # Wait until a shutdown signal is received
+    await shutdown_event.wait()
+    
+    # Perform graceful shutdown
+    await shutdown(device_task, gateway, logger)
 
 if __name__ == "__main__":
-    main()
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        # If KeyboardInterrupt escapes, it's safe to exit
+        pass
+    logging.getLogger(__name__).info("🛑 Simulator stopped.")
