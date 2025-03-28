@@ -3,6 +3,7 @@ import struct
 import base64
 from utils import encrypt_payload, calculate_mic
 from mac_commands import parse_mac_commands
+from channel_simulator import ChannelSimulator
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +13,7 @@ class LoRaWANModule:
     Handles protocol state, frame counters, MAC commands, and downlink handling.
     """
 
-    def __init__(self, dev_addr: str, nwk_skey: str, app_skey: str):
+    def __init__(self, dev_addr: str, nwk_skey: str, app_skey: str,  message_bus=None):
         """
         :param dev_addr: Device address (e.g. '26011BDA')
         :param nwk_skey: Network session key (hex string)
@@ -32,10 +33,14 @@ class LoRaWANModule:
         self.rx1_delay_secs = 1  # For future timing simulations
         self.mac_response_queue = []  # For future mac responses
 
-        # PHY and regional behavior
-        # To be introduced later!
         # self.radio = RadioPHY()  # To simulate the physical radio parameters
+        # TODO: Rename rf_interface to make it clear that its just for uplinks
+        # TODO: Rename message_bus to make it clear that its the downlink interface
         self.rf_interface = None  # Callback to an async function that accepts a Base64-encoded packet.
+        self.channel_simulator = ChannelSimulator(0.1)
+
+        if message_bus:
+            message_bus.subscribe(self._handle_radio_message)
 
         logger.info(f"[LoRaWANModule] Initialized with DevAddr={dev_addr}")
 
@@ -50,10 +55,10 @@ class LoRaWANModule:
         Integrates the uplink flow: receives raw application data from the device,
         builds the complete PHYPayload, and sends it using the RF interface.
         """
-        uplink_packet = await self.build_uplink_payload(app_payload, fport, confirmed)
-        await self.send_uplink(uplink_packet)
+        uplink_bytes = await self.build_uplink_payload(app_payload, fport, confirmed)
+        await self.send_uplink(uplink_bytes)
 
-    async def build_uplink_payload(self, payload: bytes, fport: int = 1, confirmed: bool = False) -> str:
+    async def build_uplink_payload(self, payload: bytes, fport: int = 1, confirmed: bool = False) -> bytes:
         """
         Construct the full uplink PHYPayload:
           - Build MHDR, FCtrl, FCnt, FPort, encrypt FRMPayload, calculate MIC.
@@ -76,24 +81,44 @@ class LoRaWANModule:
         mic = calculate_mic(mhdr + mac_payload, nwk_skey_bytes, devaddr_bytes, self.frame_counter)
 
         phy_payload = mhdr + mac_payload + mic
-        encoded = base64.b64encode(phy_payload).decode()
-
-        logger.info(f"[LoRaWANModule] Built uplink for FCnt={self.frame_counter}")
         self.frame_counter += 1
+        
+        logger.info(f"[LoRaWANModule] Built uplink for FCnt={self.frame_counter - 1}")
+        return phy_payload
 
-        return encoded
-
-    async def send_uplink(self, uplink_packet: str):
+    async def send_uplink(self, uplink_bytes: bytes):
         """
         Transmit the uplink packet using the RF interface.
         In a real system, this might simulate RF channel effects before handing
         the packet to the gateway.
         """
+        if self.channel_simulator:
+            uplink_bytes = await self.channel_simulator.simulate_link(uplink_bytes)
+        if uplink_bytes is None:
+            logger.debug(f"[LoRaWANModule] Uplink dropped by channel simulator")
+            return
+
         if self.rf_interface:
-            await self.rf_interface(uplink_packet)
+            await self.rf_interface(uplink_bytes)
             logger.info("[LoRaWANModule] Uplink packet sent via RF interface.")
         else:
             logger.warning("[LoRaWANModule] No RF interface set; uplink not sent.")
+
+    async def _handle_radio_message(self, raw: bytes):
+        if len(raw) < 5:
+            return
+        devaddr = raw[1:5][::-1].hex().upper()
+        if devaddr != self.dev_addr:
+            return
+
+        if self.channel_simulator:
+            raw = await self.channel_simulator.simulate_link(raw)
+        if raw is None:
+            logger.info(f"[LoRaWANModule] Downlink dropped by channel simulator (DevAddr={self.dev_addr})")
+            return
+
+        logger.debug(f"[LoRaWANModule] Downlink accepted for {self.dev_addr}")
+        await self.handle_downlink_payload(raw)
 
     async def handle_downlink_payload(self, raw_bytes):
         logger.debug(f"{self.dev_addr} received raw downlink: {raw_bytes.hex()}")
@@ -145,10 +170,6 @@ class LoRaWANModule:
     def queue_mac_response(self, cid: int, payload: bytes):
         logger.info(f"[LoRaWANModule] queue_mac_response() not implemented for CID 0x{cid:02X}")
 
-
-    def parse_packet(self, raw: bytes):
-        logger.info("[LoRaWANModule] parse_packet() not implemented")
-        return {}
 
     def get_pending_mac_responses(self) -> bytes:
         logger.info("[LoRaWANModule] get_pending_mac_responses() not implemented")

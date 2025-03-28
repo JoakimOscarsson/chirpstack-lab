@@ -36,7 +36,7 @@ CID_LENGTHS = {
 }
 
 def parse_mac_commands(data: bytes) -> List[MacCommand]:
-    logger.info(f"Parsing MAC commands: {data.hex()}")
+    logger.debug(f"Parsing MAC commands: {data.hex()}")
     commands = []
     i = 0
     while i < len(data):

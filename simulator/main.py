@@ -4,69 +4,91 @@ import signal
 
 from config import parse_config
 from gateway import Gateway
-from device_manager import DeviceManager
+from iot_device import IotDevice
+from message_bus import MessageBus  # Your pub/sub event system
 
-async def shutdown(device_task, gateway, logger):
-    """
-    Perform graceful shutdown by cancelling tasks and closing the gateway.
-    """
-    logger.info("Initiating graceful shutdown...")
-    
-    # Cancel the device manager's task
-    device_task.cancel()
-    try:
-        await device_task
-    except asyncio.CancelledError:
-        logger.info("Device tasks cancelled.")
-    
-    # Close the gateway's transport gracefully
-    await gateway.close_async()
-    logger.info("Shutdown complete.")
+# --------- Global Logger Configuration ---------
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
+logger = logging.getLogger(__name__)
 
-async def main():
-    # Configure logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-    )
-    logger = logging.getLogger(__name__)
-    logger.info("🚀 Starting LoRaWAN simulator")
+# --------- Gateway Setup ---------
+async def setup_gateway(gateway_cfg, message_bus):
+    async def handle_downlink(raw_payload):
+        await message_bus.publish(raw_payload)
 
-    # Parse configuration
-    cfg = parse_config()
-    gateway_cfg = cfg["gateway"]
-    devices_list = cfg["devices"]
-
-    # Create the DeviceManager (initially without gateway)
-    device_manager = DeviceManager(None)
-
-    # Create the Gateway and wire the downlink handler to DeviceManager
     gateway = Gateway(
         eui=gateway_cfg["eui"],
         udp_ip=gateway_cfg["udp_ip"],
         udp_port=gateway_cfg["udp_port"],
-        downlink_handler=device_manager.dispatch_downlink
+        downlink_handler=handle_downlink  # ✅ Clean and async-safe
     )
-    device_manager.gateway = gateway  # Set after gateway is created
     await gateway.setup_async()
-    asyncio.create_task(gateway.pull_data_loop())
+    logger.info("Gateway initialized.")
+    return gateway
 
-    logger.info(f"Config has {len(devices_list)} device(s).")
-    for dev_conf in devices_list:
-        device_manager.add_device(
-            dev_addr=dev_conf["devaddr"],
-            nwk_skey=dev_conf["nwk_skey"],
-            app_skey=dev_conf["app_skey"],
-            send_interval=dev_conf["send_interval"]
+# --------- Device Setup ---------
+def setup_devices(devices_cfg, message_bus, gateway):
+    devices = []
+    for dev in devices_cfg:
+        device = IotDevice(
+            dev_addr=dev["devaddr"],
+            nwk_skey=dev["nwk_skey"],
+            app_skey=dev["app_skey"],
+            send_interval=dev["send_interval"],
+            message_bus=message_bus
         )
 
-    # Start the device manager's asynchronous loop
-    device_task = asyncio.create_task(device_manager.start_all_devices_async())
+        device.lorawan_module.set_rf_interface(gateway.send_uplink_async)
 
-    # Create an event to signal shutdown
+        devices.append(device)
+        logger.info(f"Device {dev['devaddr']} initialized.")
+    return devices
+
+# --------- Shutdown Logic ---------
+async def shutdown(tasks, gateway):
+    logger.info("Initiating graceful shutdown...")
+
+    for task in tasks:
+        task.cancel()
+    for task in tasks:
+        try:
+            await task
+        except asyncio.CancelledError:
+            logger.info(f"Task {task.get_name()} cancelled.")
+
+    await gateway.close_async()
+    logger.info("Shutdown complete.")
+
+# --------- Main Entrypoint ---------
+async def main():
+    logger.info("🚀 Starting LoRaWAN simulator")
+
+    cfg = parse_config()
+    gateway_cfg = cfg["gateway"]
+    devices_cfg = cfg["devices"]
+
+    # Init message bus
+    message_bus = MessageBus()
+
+    # Init gateway and start pull loop
+    gateway = await setup_gateway(gateway_cfg, message_bus)
+    gateway_pull_task = asyncio.create_task(gateway.pull_data_loop(), name="gateway_pull_loop")
+
+    # Init and start devices
+    devices = setup_devices(devices_cfg, message_bus, gateway)
+    device_tasks = [
+        asyncio.create_task(device.run_uplink_cycle(), name=f"uplink_{device.lorawan_module.dev_addr}")
+        for device in devices
+    ]
+
+    all_tasks = [gateway_pull_task] + device_tasks
+
+    # Graceful shutdown
     shutdown_event = asyncio.Event()
 
-    # Define a signal handler that sets the shutdown event
     def _signal_handler():
         logger.info("Shutdown signal received.")
         shutdown_event.set()
@@ -75,16 +97,13 @@ async def main():
     loop.add_signal_handler(signal.SIGINT, _signal_handler)
     loop.add_signal_handler(signal.SIGTERM, _signal_handler)
 
-    # Wait until a shutdown signal is received
     await shutdown_event.wait()
-    
-    # Perform graceful shutdown
-    await shutdown(device_task, gateway, logger)
+    await shutdown(all_tasks, gateway)
 
+# --------- Run Entrypoint ---------
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        # If KeyboardInterrupt escapes, it's safe to exit
         pass
-    logging.getLogger(__name__).info("🛑 Simulator stopped.")
+    logger.info("🛑 Simulator stopped.")

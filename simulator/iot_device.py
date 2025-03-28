@@ -12,7 +12,7 @@ class IotDevice:
     details like frame counters, encryption, etc.
     """
 
-    def __init__(self, dev_addr, nwk_skey, app_skey, send_interval=10):
+    def __init__(self, dev_addr, nwk_skey, app_skey, send_interval=10, message_bus=None):
         """
         :param dev_addr: Device address (e.g. '26011BDA')
         :param nwk_skey: Hex string for network session key
@@ -20,7 +20,7 @@ class IotDevice:
         :param send_interval: Uplink send interval (seconds)
         """
         self.send_interval = send_interval
-        self.lorawan_module = LoRaWANModule(dev_addr, nwk_skey, app_skey)
+        self.lorawan_module = LoRaWANModule(dev_addr, nwk_skey, app_skey, message_bus=message_bus)
         logger.info(f"[IotDevice] Initialized with DevAddr={dev_addr}")
 
     async def generate_app_payload(self) -> bytes:

@@ -40,7 +40,7 @@ class GatewayProtocol(asyncio.DatagramProtocol):
         if len(data) < 4:
             self.logger.warning("Received malformed UDP packet.")
             return
-        self.logger.info(f"Received downlink with proto_id: {data[3]}.")
+        self.logger.debug(f"Received downlink with proto_id: {data[3]}.")
 
         proto_id = data[3]
         if proto_id == 0x03:  # PULL_RESP
@@ -50,8 +50,8 @@ class GatewayProtocol(asyncio.DatagramProtocol):
                 b64_payload = txpk.get("data")
                 if b64_payload:
                     raw_payload = base64.b64decode(b64_payload)
-                    self.logger.info("Received downlink from server, dispatching to handler...")
-                    self.downlink_handler(raw_payload)
+                    self.logger.debug("Received downlink from server, dispatching to handler...")
+                    asyncio.create_task(self.downlink_handler(raw_payload))
                 else:
                     self.logger.warning("PULL_RESP missing 'data' field.")
             except Exception as e:
@@ -99,12 +99,14 @@ class Gateway:
         self.logger.info(f"Gateway EUI={self.eui} async transport setup complete.")
 
 
-    async def send_uplink_async(self, base64_payload):
+    async def send_uplink_async(self, payload_bytes: bytes):
         """
         Build the LoRa packet-forwarder JSON and send it via self.protocol.send(...).
         """
         token = random.randint(0, 65535)
         header = self._create_udp_header(token, push=True)
+
+        base64_payload = base64.b64encode(payload_bytes).decode()
 
         rxpk = {
             "tmst": int(time.time() * 1e6) % (2**32),
