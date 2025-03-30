@@ -21,7 +21,7 @@ class LoRaWANProtocol:
         self.downlink_counter = 0
         self.joined = True  # Assume ABP for now
 
-    async def build_uplink_payload(self, payload: bytes, fport: int = 1, confirmed: bool = False) -> bytes:
+    async def build_uplink_frame(self, payload: bytes, fport: int = 1, confirmed: bool = False) -> bytes:
         """
         Construct the full PHYPayload for uplink.
 
@@ -53,7 +53,7 @@ class LoRaWANProtocol:
         logger.debug(f"[LoRaWANProtocol] Built uplink payload with FCnt={self.frame_counter - 1}")
         return phy_payload
 
-    def decrypt_frmpayload(self, raw_bytes: bytes, fcnt: int, is_nwk: bool = False) -> bytes:
+    def decrypt_downlink_payload(self, raw_bytes: bytes, fcnt: int, is_nwk: bool = False) -> bytes:
         """
         Decrypt the FRMPayload part of a downlink.
 

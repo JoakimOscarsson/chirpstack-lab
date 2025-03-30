@@ -43,7 +43,7 @@ def setup_devices(devices_cfg, message_bus, gateway):
             message_bus=message_bus
         )
 
-        device.lorawan_module.set_rf_interface(gateway.send_uplink_async)
+        device.lorawan_module.set_uplink_interface(gateway.send_uplink_async)
 
         devices.append(device)
         logger.info(f"Device {dev['devaddr']} initialized.")

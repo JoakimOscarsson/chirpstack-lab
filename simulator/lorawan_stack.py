@@ -25,23 +25,23 @@ class LoRaWANStack:
         self.channel_simulator = channel_simulator or ChannelSimulator(distance=distance, environment=environment)
 
         # Uplink interface (e.g. a gateway callback)
-        self.rf_interface = None
+        self.uplink_interface = None
 
         # Subscribe to downlink events
         if message_bus:
-            message_bus.subscribe(self._handle_radio_message)
+            message_bus.subscribe(self._receive_downlink_message)
 
         logger.info(f"[LoRaWANStack] Initialized for DevAddr={dev_addr}")
 
-    def set_rf_interface(self, callback):
+    def set_uplink_interface(self, callback):
         """Set async callback used to forward uplinks to the gateway."""
-        self.rf_interface = callback
+        self.uplink_interface = callback
 
     async def send(self, app_payload: bytes, fport: int = 1, confirmed: bool = False):
         """
         Build and transmit an uplink containing the application payload.
         """
-        uplink_bytes = await self.protocol.build_uplink_payload(app_payload, fport, confirmed)
+        uplink_bytes = await self.protocol.build_uplink_frame(app_payload, fport, confirmed)
 
         envelope = RadioEnvelope(
             payload=uplink_bytes,
@@ -62,13 +62,13 @@ class LoRaWANStack:
             logger.info("[LoRaWANStack] Uplink dropped by channel simulator")
             return
 
-        if self.rf_interface:
-            await self.rf_interface(envelope)
+        if self.uplink_interface:
+            await self.uplink_interface(envelope)
             logger.info(f"[LoRaWANStack] Uplink sent for DevAddr={self.dev_addr}")
         else:
             logger.warning("[LoRaWANStack] No RF interface set; uplink not sent")
 
-    async def _handle_radio_message(self, envelope: RadioEnvelope):
+    async def _receive_downlink_message(self, envelope: RadioEnvelope):
         """
         Handle a downlink message delivered via the message bus.
         """
@@ -115,7 +115,7 @@ class LoRaWANStack:
         frmpayload = raw_bytes[fport_index + 1:-4]  # Strip MIC
 
         if fport == 0:
-            decrypted = self.protocol.decrypt_frmpayload(frmpayload, fcnt, is_nwk=True)
+            decrypted = self.protocol.decrypt_downlink_payload(frmpayload, fcnt, is_nwk=True)
             commands = parse_mac_commands(decrypted)
             for cmd in commands:
                 self.mac_handler.apply_mac_command(cmd)
