@@ -5,6 +5,7 @@ import time
 import logging
 import base64
 from datetime import datetime
+from utils import RadioEnvelope
 
 
 class GatewayProtocol(asyncio.DatagramProtocol):
@@ -50,8 +51,17 @@ class GatewayProtocol(asyncio.DatagramProtocol):
                 b64_payload = txpk.get("data")
                 if b64_payload:
                     raw_payload = base64.b64decode(b64_payload)
+
+                    envelope = RadioEnvelope(
+                        payload=raw_payload,
+                        freq=txpk.get("freq"),
+                        data_rate=txpk.get("datr"),
+                        tx_power=txpk.get("powe"),
+                        timestamp=txpk.get("tmst"),
+                    )
+
                     self.logger.debug("Received downlink from server, dispatching to handler...")
-                    asyncio.create_task(self.downlink_handler(raw_payload))
+                    asyncio.create_task(self.downlink_handler(envelope))
                 else:
                     self.logger.warning("PULL_RESP missing 'data' field.")
             except Exception as e:
@@ -99,29 +109,28 @@ class Gateway:
         self.logger.info(f"Gateway EUI={self.eui} async transport setup complete.")
 
 
-    async def send_uplink_async(self, payload_bytes: bytes):
+    async def send_uplink_async(self, envelope):
         """
         Build the LoRa packet-forwarder JSON and send it via self.protocol.send(...).
         """
         token = random.randint(0, 65535)
         header = self._create_udp_header(token, push=True)
 
-        base64_payload = base64.b64encode(payload_bytes).decode()
 
         rxpk = {
-            "tmst": int(time.time() * 1e6) % (2**32),
-            "time": datetime.utcnow().isoformat() + "Z",
+            "tmst": envelope.timestamp,  # int(time.time() * 1e6) % (2**32),
+            "time": envelope.utc_time,  # datetime.utcnow().isoformat() + "Z",
             "chan": 0,
             "rfch": 0,
-            "freq": 868.1,
+            "freq": envelope.freq,  # 868.1,
             "stat": 1,
             "modu": "LORA",
-            "datr": "SF7BW125",
-            "codr": "4/5",
-            "rssi": -42,
-            "lsnr": 5.5,
-            "size": 32,
-            "data": base64_payload
+            "datr": envelope.data_rate,  # "SF7BW125",
+            "codr": envelope.coding_rate,  # "4/5",
+            "rssi": envelope.rssi,  # -42,
+            "lsnr": envelope.snr,  # 5.5,
+            "size": envelope.size,  # 32,
+            "data": base64.b64encode(envelope.payload).decode()
         }
 
         payload = {"rxpk": [rxpk]}

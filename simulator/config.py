@@ -15,7 +15,10 @@ BUILT_IN_DEFAULTS = {
     "nwk_skey": "00000000000000000000000000000000",
     "app_skey": "00000000000000000000000000000000",
     "devaddr": "26011BDA",
-    "send_interval": 10
+    "send_interval": 10,
+
+    "distance": 2000,
+    "environment": "suburban"
 }
 
 def parse_config():
@@ -44,7 +47,9 @@ def parse_config():
             "devaddr": str,
             "nwk_skey": str,
             "app_skey": str,
-            "send_interval": int
+            "send_interval": int,
+            "distance": int,
+            "environment": str
           },
           ...
         ]
@@ -56,11 +61,12 @@ def parse_config():
         "gateway_eui": BUILT_IN_DEFAULTS["gateway_eui"],
         "udp_ip": BUILT_IN_DEFAULTS["udp_ip"],
         "udp_port": BUILT_IN_DEFAULTS["udp_port"],
-
         "nwk_skey": BUILT_IN_DEFAULTS["nwk_skey"],
         "app_skey": BUILT_IN_DEFAULTS["app_skey"],
         "devaddr": BUILT_IN_DEFAULTS["devaddr"],
-        "send_interval": BUILT_IN_DEFAULTS["send_interval"]
+        "send_interval": BUILT_IN_DEFAULTS["send_interval"],
+        "distance": BUILT_IN_DEFAULTS["distance"],
+        "environment": BUILT_IN_DEFAULTS["environment"]
     }
 
     # 2) Override with environment variables (single device)
@@ -79,6 +85,10 @@ def parse_config():
         conf["devaddr"] = os.getenv("DEVADDR")
     if os.getenv("SEND_INTERVAL"):
         conf["send_interval"] = int(os.getenv("SEND_INTERVAL"))
+    if os.getenv("DISTANCE"):
+        conf["distance"] = int(os.getenv("DISTANCE"))
+    if os.getenv("ENVIRONMENT"):
+        conf["environment"] = int(os.getenv("ENVIRONMENT"))
 
     # 3) Parse CLI arguments
     parser = argparse.ArgumentParser(description="LoRaWAN Simulator")
@@ -92,6 +102,8 @@ def parse_config():
     parser.add_argument("--app-skey", help="AppSKey (single device)", default=None)
     parser.add_argument("--devaddr", help="DevAddr (single device)", default=None)
     parser.add_argument("--send-interval", type=int, help="Send interval (single device)", default=None)
+    parser.add_argument("--distance", help="Distance from gateway in meters", default=None)
+    parser.add_argument("--environment", help="Device environment: Rural / Suburban / Urban", default=None)
 
     args = parser.parse_args()
 
@@ -110,6 +122,10 @@ def parse_config():
         conf["devaddr"] = args.devaddr
     if args.send_interval:
         conf["send_interval"] = args.send_interval
+    if args.distance:
+        conf["distance"] = args.distance
+    if args.environment:
+        conf["environment"] = args.environment
 
     # We'll store the final gateway + devices in a structured dict
     final_cfg = {
@@ -186,6 +202,8 @@ def _validate_multi_devices(dev_list):
         nwk_skey = dev_conf.get("nwk_skey", BUILT_IN_DEFAULTS["nwk_skey"])
         app_skey = dev_conf.get("app_skey", BUILT_IN_DEFAULTS["app_skey"])
         send_interval = dev_conf.get("send_interval", BUILT_IN_DEFAULTS["send_interval"])
+        distance = dev_conf.get("distance", BUILT_IN_DEFAULTS["distance"])
+        environment = dev_conf.get("environment", BUILT_IN_DEFAULTS["environment"])
 
         if devaddr in used_devaddrs:
             raise ValueError(f"Duplicate devaddr '{devaddr}' in config file. Must be unique.")
@@ -195,7 +213,9 @@ def _validate_multi_devices(dev_list):
             "devaddr": devaddr,
             "nwk_skey": nwk_skey,
             "app_skey": app_skey,
-            "send_interval": send_interval
+            "send_interval": send_interval,
+            "distance": distance,
+            "environment": environment
         })
 
     return validated

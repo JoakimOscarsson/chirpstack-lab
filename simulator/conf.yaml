@@ -5,6 +5,31 @@ gateway:
 
 devices:
   - devaddr: "26011BDA"
-    send_interval: 5
+    distance: 1000  # in meters
+    environment: "suburban"  # urban / suburban / rural
+    send_interval: 10
 
 #  - devaddr: "26011BDB"
+#    distance: 2000
+#    environment: "suburban"
+    
+
+#  - devaddr: "26011BDC"
+#    distance: 1500
+#    environment: "suburban"
+    
+
+  #- devaddr: "26011BDD"
+  #  distance: 100
+  #  environment: "urban"
+    
+
+ # - devaddr: "26011BDE"
+ #   distance: 1000
+ #   environment: "urban"
+    
+
+#  - devaddr: "26011BDF"
+#    distance: 5000
+#    environment: "suburban"
+    

@@ -23,7 +23,7 @@ async def setup_gateway(gateway_cfg, message_bus):
         eui=gateway_cfg["eui"],
         udp_ip=gateway_cfg["udp_ip"],
         udp_port=gateway_cfg["udp_port"],
-        downlink_handler=handle_downlink  # ✅ Clean and async-safe
+        downlink_handler=handle_downlink  
     )
     await gateway.setup_async()
     logger.info("Gateway initialized.")
@@ -37,6 +37,8 @@ def setup_devices(devices_cfg, message_bus, gateway):
             dev_addr=dev["devaddr"],
             nwk_skey=dev["nwk_skey"],
             app_skey=dev["app_skey"],
+            distance=dev["distance"],
+            environment=dev["environment"],
             send_interval=dev["send_interval"],
             message_bus=message_bus
         )
@@ -107,3 +109,31 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         pass
     logger.info("🛑 Simulator stopped.")
+
+
+
+
+
+
+"""
+
+Things to add:
+Chmas - update radio.enabled channels
+Redundancy (NbTrans) - repeat uplinks in loop
+Duty Cycle - track airtiem + delay
+rd1_dr_offset - apply offset to uplink DR
+rx2_datarate - use in RX2 receive logic
+rx2_frequency - check in downlink accept logic
+RX timing - add asyc timers and match timing windows (though I want to always receive, but nly print a debug log if wrong timing)
+Smulate usage of multiple channels
+Simulate multi-divice crowdedness on channels
+Simulate distance
+update configuration when adding devices (include options to set more parameters)
+parse non mac commands to application logic and print there
+confirmed up/down links
+autojoin
+
+
+
+
+"""

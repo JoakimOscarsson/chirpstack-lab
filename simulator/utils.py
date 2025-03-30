@@ -1,6 +1,9 @@
 import struct
+from dataclasses import dataclass
+from datetime import datetime
 from Crypto.Cipher import AES
 from Crypto.Hash import CMAC
+from typing import Optional
 
 def encrypt_payload(payload: bytes, app_skey: bytes, devaddr: bytes, fcnt: int, direction: int) -> bytes:
     """
@@ -55,3 +58,48 @@ def calculate_mic(phy: bytes, nwk_skey: bytes, devaddr: bytes, fcnt: int) -> byt
     cmac = CMAC.new(nwk_skey, ciphermod=AES)
     cmac.update(b0 + phy)
     return cmac.digest()[:4]
+
+
+# EU868 region DR index to (SF, BW)
+EU868_DR_MAP = {
+    0: (12, 125),  # SF12BW125
+    1: (11, 125),
+    2: (10, 125),
+    3: (9, 125),
+    4: (8, 125),
+    5: (7, 125),
+    6: (7, 250),
+    7: (50, 0),    # FSK
+}
+
+def dr_to_sf_bw(dr_index: int, region: str = "EU868") -> tuple[int, int]:
+    if region == "EU868":
+        return EU868_DR_MAP.get(dr_index, (None, None))
+    raise NotImplementedError(f"Region '{region}' not supported.")
+
+
+@dataclass
+class RadioEnvelope:
+    payload: bytes
+    devaddr: Optional[str] = None
+    freq: Optional[float] = None
+    spreading_factor: Optional[int] = None
+    bandwidth: Optional[int] = None
+    coding_rate: Optional[str] = None
+    data_rate: Optional[str] = None
+    tx_power: Optional[int] = None
+    rssi: Optional[int] = None
+    snr: Optional[float] = None
+    size: Optional[int] = None
+    timestamp: Optional[int] = None
+    utc_time: Optional[str] = None
+    distance: Optional[int] = None
+    environment: Optional[str] = None
+
+    def enrich(self):
+        if self.size is None:
+            self.size = len(self.payload)
+        if not self.data_rate and self.spreading_factor and self.bandwidth:
+            self.data_rate = f"SF{self.spreading_factor}BW{self.bandwidth}"
+        if not self.utc_time:
+            self.utc_time = datetime.utcnow().isoformat() + "Z"
