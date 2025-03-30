@@ -1,6 +1,7 @@
 import logging
 import asyncio
-from lorawan_module import LoRaWANModule
+#from lorawan_module import LoRaWANModule
+from lorawan_stack import LoRaWANStack
 
 logger = logging.getLogger(__name__)
 
@@ -20,33 +21,35 @@ class IotDevice:
         :param send_interval: Uplink send interval (seconds)
         """
         self.send_interval = send_interval
-        self.lorawan_module = LoRaWANModule(dev_addr, nwk_skey, app_skey, distance, environment, message_bus=message_bus)
+        self.lorawan_module = LoRaWANStack(
+            dev_addr=dev_addr,
+            nwk_skey=nwk_skey,
+            app_skey=app_skey,
+            distance=distance,
+            environment=environment,
+            message_bus=message_bus
+        )
         logger.info(f"[IotDevice] Initialized with DevAddr={dev_addr}")
 
     async def generate_app_payload(self) -> bytes:
         """
-        Generate raw application data.
-        In a real device, this would be sensor readings or event data.
-        Here, we simply return a fixed sensor reading.
+        Simulate application-level data generation (e.g., sensor reading).
         """
         logger.debug("[IotDevice] generate_app_payload() called.")
-        # For example: sensor type 0x01 and a dummy reading 0x64 (100 decimal)
-        return b'\x01\x64'
+        return b'\x01\x64'  # Example: sensor type + value
 
     async def run_uplink_cycle(self):
         """
-        Periodically generate raw application data and instruct the LoRaWANModule
-        to build and send the full uplink PHYPayload. The device never handles
-        protocol-level details.
+        Periodically generate and send application payloads via the LoRaWAN stack.
         """
         while True:
             raw_payload = await self.generate_app_payload()
-            logger.debug(f"[IotDevice] Generated raw payload: {raw_payload.hex()}")
-            await self.lorawan_module.send_app_payload(raw_payload)  # Could add fport and confirmed here if needed.
+            logger.debug(f"[IotDevice] Generated app payload: {raw_payload.hex()}")
+            await self.lorawan_module.send(raw_payload)
             await asyncio.sleep(self.send_interval)
 
     async def receive_downlink(self, data: bytes):
         """
-        Stub for handling downlinks.
+        Hook for application-level downlink processing (optional).
         """
         logger.info(f"[IotDevice] receive_downlink() called, data: {data.hex()}")

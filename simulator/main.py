@@ -9,7 +9,7 @@ from message_bus import MessageBus  # Your pub/sub event system
 
 # --------- Global Logger Configuration ---------
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 )
 logger = logging.getLogger(__name__)
@@ -112,8 +112,17 @@ if __name__ == "__main__":
 
 
 
+"""
+Refactoring needs:
+ - Architecture: Do each module, class and method respect the separation of concerns?
+ - Radio envelope: turn into metadata package
+ - Types: eg. environment->enum
+ - function names
+ - function arguments. do we need to send as much. Should we pack in some metadataclass?
+ - Where do we store what parameter?
 
 
+"""
 
 """
 
