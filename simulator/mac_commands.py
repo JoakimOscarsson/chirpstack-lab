@@ -36,6 +36,19 @@ CID_LENGTHS = {
     0x0D: 3,
 }
 
+# CLASS_A_MAC_COMMANDS_LORAWAN_1_0_X = {
+#     # Bidirectional (request/response)
+#     0x02: {"name": "LinkCheckReq/Ans", "direction": "bidirectional"},
+#     0x03: {"name": "LinkADRReq/Ans", "direction": "bidirectional"},
+#     0x04: {"name": "DutyCycleReq/Ans", "direction": "bidirectional"},
+#     0x05: {"name": "RXParamSetupReq/Ans", "direction": "bidirectional"},
+#     0x06: {"name": "DevStatusReq/Ans", "direction": "bidirectional"},
+#     0x07: {"name": "NewChannelReq/Ans", "direction": "bidirectional"},
+#     0x08: {"name": "RXTimingSetupReq/Ans", "direction": "bidirectional"},
+#     0x09: {"name": "TXParamSetupReq/Ans", "direction": "bidirectional"},
+#     0x0A: {"name": "DLChannelReq/Ans", "direction": "bidirectional"},
+# }
+
 def parse_mac_commands(data: bytes) -> List[MacCommand]:
     logger.debug(f"Parsing MAC commands: {data.hex()}")
     commands = []
@@ -134,6 +147,7 @@ class MACCommandHandler:
 
     def _handle_link_adr_req(self, cmd: MacCommand):
         dr_tx = cmd.decoded["DataRate_TXPower"]
+        nb_trans = cmd.decoded["NbTrans"]
         self.radio.update_link_adr(dr_tx)
 
     def _handle_duty_cycle_req(self, cmd: MacCommand):

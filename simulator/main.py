@@ -9,7 +9,7 @@ from message_bus import MessageBus  # Your pub/sub event system
 
 # --------- Global Logger Configuration ---------
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 )
 logger = logging.getLogger(__name__)
@@ -110,6 +110,22 @@ if __name__ == "__main__":
         pass
     logger.info("🛑 Simulator stopped.")
 
+
+
+"""
+backlog:
+- Add handle in iot_device to receive confirm ACKs
+
+- implement ChMask
+- Simulate duty cycle restrictions
+- Add RX1/2 windows logic and match delays
+- Simulate DevStatusAns and get stubbattery iot from device
+- Implement channel hopping and expand channel simulation to accountr for busy channels
+- Remove pingslotchannelreq since its only for class b?
+
+
+
+"""
 
 
 """

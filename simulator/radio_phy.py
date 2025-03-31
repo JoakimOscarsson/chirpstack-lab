@@ -20,20 +20,20 @@ class RadioPHY:
         self.current_channel_index = 0
         self.last_uplink_freq = 868100000
 
+        # Modulation settings
+        self.data_rate = 0  # LoRa DR index (e.g., 0 = SF12BW125)
+        self.coding_rate = "4/5"
+
         # Transmission settings
         self.tx_power = 14  # dBm
         self.max_eirp = 16  # Region-defined cap
         self.dwell_time_enabled = False
 
-        # Modulation settings
-        self.data_rate = 0  # LoRa DR index (e.g., 0 = SF12BW125)
-        self.coding_rate = "4/5"
-
-        # MAC command-configurable parameters
         self.rx1_dr_offset = 0
         self.rx2_datarate = 0
         self.rx2_frequency = 869525000
         self.rx_delay_secs = 1
+        self.nb_trans = 3
 
     def get_spreading_factor(self):
         """Return the spreading factor based on the current data rate."""
@@ -67,7 +67,7 @@ class RadioPHY:
             f"RX2 DR={rx2_datarate}, RX2 Freq={rx2_frequency}, Delay={delay}s"
         )
 
-    def update_link_adr(self, data_rate_tx_power: int):
+    def update_link_adr(self, data_rate_tx_power: int, nb_trans = None):
         """
         Apply data rate and TX power configuration from LinkADRReq.
 
@@ -75,7 +75,9 @@ class RadioPHY:
         """
         self.data_rate = data_rate_tx_power >> 4
         self.tx_power = data_rate_tx_power & 0x0F
-        logger.debug(f"[RadioPHY] DR updated to {self.data_rate}, TX power to {self.tx_power} dBm")
+        if nb_trans is not None:
+            self.nb_trans = max(1, min(nb_trans, 15))
+        logger.debug(f"[RadioPHY] DR updated to {self.data_rate}, TX power to {self.tx_power} dBm, NbTrans={self.nb_trans}")
 
     def add_channel(self, index: int, freq: int, dr_min: int, dr_max: int):
         """
