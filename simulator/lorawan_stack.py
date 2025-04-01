@@ -36,6 +36,7 @@ class LoRaWANStack:
         self.waiting_for_ack = False
         self.pending_fcnt = None
         self.ack_event = None
+        self.ack_callback = None
 
 
         logger.info(f"[LoRaWANStack] Initialized for DevAddr={dev_addr}")
@@ -146,6 +147,8 @@ class LoRaWANStack:
         if self.waiting_for_ack and ack_flag:
             logger.info(f"[LoRaWANStack] ACK received in downlink FCnt={fcnt}.")
             self.ack_event.set()
+            if self.ack_callback:
+                self.ack_callback()
         logger.debug("Done checking ack_flag.")
 
         fport_index = 8 + fopts_len

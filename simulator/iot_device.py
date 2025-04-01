@@ -29,8 +29,15 @@ class IotDevice:
             environment=environment,
             message_bus=message_bus
         )
+        self.lorawan_module.ack_callback = self.on_acc_received
         logger.info(f"[IotDevice] Initialized with DevAddr={dev_addr}")
 
+    def on_acc_received(self):
+        """
+        Hook for application-level downlink processing (optional).
+        """
+        logger.info("[IotDevice] on_acc_receive() called.")
+        
     async def generate_app_payload(self) -> bytes:
         """
         Simulate application-level data generation (e.g., sensor reading).
@@ -45,7 +52,7 @@ class IotDevice:
         while True:
             raw_payload = await self.generate_app_payload()
             logger.debug(f"[IotDevice] Generated app payload: {raw_payload.hex()}")
-            await self.lorawan_module.send(raw_payload, confirmed = False)
+            await self.lorawan_module.send(raw_payload, confirmed = True)
             await asyncio.sleep(self.send_interval)
 
     async def receive_downlink(self, data: bytes):
