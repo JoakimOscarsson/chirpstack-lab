@@ -80,10 +80,12 @@ def decode_mac_command(cid: int, payload: bytes) -> dict:
         dr_tx = payload[0]
         ch_mask = int.from_bytes(payload[1:3], 'little')
         redundancy = payload[3]
+        nbTrans = redundancy & 0x0F
         return {
             "DataRate_TXPower": dr_tx,
             "ChMask": f"0x{ch_mask:04X}",
             "Redundancy": redundancy,
+            "NbTrans": nbTrans, 
         }
     elif cid == 0x04:  # DutyCycleReq
         val = payload[0]
@@ -148,8 +150,24 @@ class MACCommandHandler:
     def _handle_link_adr_req(self, cmd: MacCommand):
         dr_tx = cmd.decoded["DataRate_TXPower"]
         nb_trans = cmd.decoded["NbTrans"]
-        self.radio.update_link_adr(dr_tx)
+        ch_mask = cmd.decoded["ChMask"]    
+        self.radio.update_link_adr(dr_tx, nb_trans)
+        self.radio.apply_channel_mask(ch_mask)
 
+    def apply_channel_mask(self, ch_mask: int):
+        """
+        Apply a 16-bit ChMask to enable/disable channels.
+        """
+        for i in range(16):
+            enabled = (ch_mask >> i) & 0x01
+            if enabled:
+                if i not in self.enabled_channels:
+                    logger.warning(f"[RadioPHY] ChMask tried to enable unknown channel {i}")
+            else:
+                if i in self.enabled_channels:
+                    logger.debug(f"[RadioPHY] Disabling channel {i}")
+                    self.enabled_channels.pop(i)
+    
     def _handle_duty_cycle_req(self, cmd: MacCommand):
         logger.warning("[MAC] DutyCycleReq received, but not yet simulated")
 

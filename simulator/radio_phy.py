@@ -94,3 +94,11 @@ class RadioPHY:
             "dr_max": dr_max
         }
         logger.debug(f"[RadioPHY] Channel {index} set to {freq}Hz, DR {dr_min}-{dr_max}")
+
+    def rotate_channel(self):
+        available_channels = list(self.enabled_channels.keys())
+        if not available_channels:
+            logger.warning("[RadioPHY] No enabled channels to rotate through.")
+            return
+        self.current_channel_index = (self.current_channel_index + 1) % len(available_channels)
+        logger.debug(f"[RadioPHY] Hopped to channel index {self.current_channel_index}")

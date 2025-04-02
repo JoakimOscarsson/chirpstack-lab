@@ -114,9 +114,7 @@ if __name__ == "__main__":
 
 """
 backlog:
-- Add handle in iot_device to receive confirm ACKs
 
-- implement ChMask
 - Simulate duty cycle restrictions
 - Add RX1/2 windows logic and match delays
 - Simulate DevStatusAns and get stubbattery iot from device

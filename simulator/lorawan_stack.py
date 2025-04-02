@@ -68,6 +68,7 @@ class LoRaWANStack:
                 payload=uplink_bytes,
                 devaddr=self.dev_addr,
                 freq=self.radio.get_current_frequency() / 1e6,
+                chan=self.radio.current_channel_index,
                 spreading_factor=self.radio.get_spreading_factor(),
                 bandwidth=self.radio.get_bandwidth(),
                 coding_rate=self.radio.coding_rate,
@@ -85,7 +86,11 @@ class LoRaWANStack:
 
             if self.uplink_interface:
                 await self.uplink_interface(envelope)
-                logger.info(f"[LoRaWANStack] Uplink attempt {attempt + 1}/{nb_trans} sent for DevAddr={self.dev_addr}")
+                logger.info(f"[LoRaWANStack] Uplink attempt {attempt + 1}/{nb_trans} sent for DevAddr={self.dev_addr} "
+                        f"on channel {self.radio.current_channel_index} ({self.radio.get_current_frequency()} Hz)")
+
+
+            self.radio.rotate_channel()
 
             if confirmed and attempt < nb_trans - 1:
                 await asyncio.sleep(self.radio.rx_delay_secs + 1)

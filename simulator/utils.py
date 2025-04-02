@@ -83,6 +83,7 @@ class RadioEnvelope:
     payload: bytes
     devaddr: Optional[str] = None
     freq: Optional[float] = None
+    chan: Optional[int] = None
     spreading_factor: Optional[int] = None
     bandwidth: Optional[int] = None
     coding_rate: Optional[str] = None

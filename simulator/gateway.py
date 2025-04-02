@@ -120,7 +120,7 @@ class Gateway:
         rxpk = {
             "tmst": envelope.timestamp,  # int(time.time() * 1e6) % (2**32),
             "time": envelope.utc_time,  # datetime.utcnow().isoformat() + "Z",
-            "chan": 0,
+            "chan": envelope.chan,
             "rfch": 0,
             "freq": envelope.freq,  # 868.1,
             "stat": 1,
