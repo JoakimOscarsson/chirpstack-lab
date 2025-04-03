@@ -64,7 +64,6 @@ class LoRaWANStack:
                 logger.info(f"[LoRaWANStack] ACK received — stopping retransmissions at attempt {attempt}")
                 break
             
-            freq_hz = self.radio.get_current_frequency()
             sf = self.radio.get_spreading_factor()
             bw = self.radio.get_bandwidth()
             payload_size = len(uplink_bytes)
@@ -82,14 +81,16 @@ class LoRaWANStack:
                 logger.warning(f"[LoRaWANStack] No available channel for transmission. Waiting before retry...")
                 await asyncio.sleep(2)
                 continue
-             
+
+            freq_hz = self.radio.get_current_frequency()
+
             envelope = RadioEnvelope(
                 payload=uplink_bytes,
                 devaddr=self.dev_addr,
-                freq=self.radio.get_current_frequency() / 1e6,
+                freq=freq_hz / 1e6,
                 chan=self.radio.current_channel_index,
-                spreading_factor=self.radio.get_spreading_factor(),
-                bandwidth=self.radio.get_bandwidth(),
+                spreading_factor=sf,
+                bandwidth=bw,
                 coding_rate=self.radio.coding_rate,
                 data_rate=f"SF{self.radio.get_spreading_factor()}BW{self.radio.get_bandwidth()}",
                 tx_power=self.radio.tx_power,
@@ -107,7 +108,7 @@ class LoRaWANStack:
                 await self.uplink_interface(envelope)
                 self.radio.record_transmission(self.radio.current_channel_index, airtime)
                 logger.info(f"[LoRaWANStack] Uplink attempt {attempt + 1}/{nb_trans} sent for DevAddr={self.dev_addr} "
-                        f"on channel {self.radio.current_channel_index} ({self.radio.get_current_frequency()} Hz)")
+                        f"on channel {self.radio.current_channel_index} ({freq_hz} Hz)")
 
             self.radio.rotate_channel()
 

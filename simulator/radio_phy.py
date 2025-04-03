@@ -38,7 +38,7 @@ class RadioPHY:
         self.rx_delay_secs = 1
         self.nb_trans = 3
 
-        self.last_transmissions = defaultdict(list)
+        self.next_tx_time = defaultdict(lambda: 0.0)
 
     def get_spreading_factor(self):
         """Return the spreading factor based on the current data rate."""
@@ -123,28 +123,27 @@ class RadioPHY:
         logger.debug(f"[RadioPHY] Hopped to channel index {self.current_channel_index}")
         
     def can_transmit(self, channel_index: int, airtime_s: float) -> bool:
+        now = time.time()
+        ready = now >= self.next_tx_time[channel_index]
         channel = self.enabled_channels.get(channel_index)
         if not channel:
             return False
 
         limit = channel.get("duty_cycle", 1.0)
-        window = 3600  # seconds
-        now = time.time()
-
-        recent_tx = [
-            (ts, at) for ts, at in self.last_transmissions[channel_index]
-            if now - ts < window
-        ]
-
-        used_airtime = sum(at for ts, at in recent_tx)
-        available = window * limit - used_airtime
-
-        logger.info(
-            f"[RadioPHY] Duty cycle on channel {channel_index} ({channel['freq']} Hz) → used={used_airtime:.2f}s, allowed={window * limit:.2f}s"
-        )
-
-        return available >= airtime_s
-
+        if ready:
+            logger.info(
+                f"[RadioPHY] Channel {channel_index} ({channel['freq']} Hz) ready for TX"
+            )
+        else:
+            wait_for = self.next_tx_time[channel_index] - now
+            logger.info(
+                f"[RadioPHY] Duty cycle wait on channel {channel_index} ({channel['freq']} Hz): {wait_for:.2f}s remaining"
+            )
+        return ready
 
     def record_transmission(self, channel_index: int, airtime_s: float):
-        self.last_transmissions[channel_index].append((time.time(), airtime_s))
+        now = time.time()
+        duty_cycle = self.enabled_channels[channel_index].get("duty_cycle", 1.0)
+        off_time = airtime_s * (1.0 / duty_cycle - 1.0)
+        self.next_tx_time[channel_index] = now + off_time
+        logger.debug(f"[RadioPHY] TX on channel {channel_index} ({self.enabled_channels[channel_index]['freq']} Hz) — Airtime: {airtime_s:.2f}s, Next TX after: {off_time:.2f}s")
