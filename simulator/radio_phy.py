@@ -1,5 +1,8 @@
+import time
 import logging
 from utils import dr_to_sf_bw
+from collections import defaultdict
+from utils import calculate_airtime
 
 logger = logging.getLogger(__name__)
 
@@ -13,9 +16,9 @@ class RadioPHY:
     def __init__(self):
         # Channel configuration
         self.enabled_channels = {
-            0: {"freq": 868100000, "dr_min": 0, "dr_max": 5},
-            1: {"freq": 868300000, "dr_min": 0, "dr_max": 5},
-            2: {"freq": 868500000, "dr_min": 0, "dr_max": 5},
+            0: {"freq": 868100000, "dr_min": 0, "dr_max": 5, "duty_cycle": 0.01},
+            1: {"freq": 868300000, "dr_min": 0, "dr_max": 5, "duty_cycle": 0.01},
+            2: {"freq": 868500000, "dr_min": 0, "dr_max": 5, "duty_cycle": 0.01},
         }
         self.current_channel_index = 0
         self.last_uplink_freq = 868100000
@@ -34,6 +37,8 @@ class RadioPHY:
         self.rx2_frequency = 869525000
         self.rx_delay_secs = 1
         self.nb_trans = 3
+
+        self.last_transmissions = defaultdict(list)
 
     def get_spreading_factor(self):
         """Return the spreading factor based on the current data rate."""
@@ -88,17 +93,58 @@ class RadioPHY:
         :param dr_min: Minimum data rate index
         :param dr_max: Maximum data rate index
         """
+        duty_cycle = 0.10 if freq == 869525000 else 0.01
         self.enabled_channels[index] = {
             "freq": freq,
             "dr_min": dr_min,
-            "dr_max": dr_max
-        }
-        logger.debug(f"[RadioPHY] Channel {index} set to {freq}Hz, DR {dr_min}-{dr_max}")
+            "dr_max": dr_max,
+            "duty_cycle": duty_cycle,
+        } 
+        logger.debug(f"[RadioPHY] Channel {index} set to {freq}Hz, DR {dr_min}-{dr_max}, duty cycle={duty_cycle}")
+
+    def apply_channel_mask(self, ch_mask: int):
+        for i in range(16):
+            enabled = (ch_mask >> i) & 0x01
+            if enabled:
+                if i not in self.enabled_channels:
+                    logger.warning(f"[RadioPHY] ChMask tried to enable unknown channel {i}")
+            else:
+                if i in self.enabled_channels:
+                    logger.debug(f"[RadioPHY] Disabling channel {i}")
+                    self.enabled_channels.pop(i)
 
     def rotate_channel(self):
         available_channels = list(self.enabled_channels.keys())
         if not available_channels:
             logger.warning("[RadioPHY] No enabled channels to rotate through.")
             return
-        self.current_channel_index = (self.current_channel_index + 1) % len(available_channels)
+        idx = available_channels.index(self.current_channel_index) if self.current_channel_index in available_channels else 0
+        self.current_channel_index = available_channels[(idx + 1) % len(available_channels)]
         logger.debug(f"[RadioPHY] Hopped to channel index {self.current_channel_index}")
+        
+    def can_transmit(self, channel_index: int, airtime_s: float) -> bool:
+        channel = self.enabled_channels.get(channel_index)
+        if not channel:
+            return False
+
+        limit = channel.get("duty_cycle", 1.0)
+        window = 3600  # seconds
+        now = time.time()
+
+        recent_tx = [
+            (ts, at) for ts, at in self.last_transmissions[channel_index]
+            if now - ts < window
+        ]
+
+        used_airtime = sum(at for ts, at in recent_tx)
+        available = window * limit - used_airtime
+
+        logger.info(
+            f"[RadioPHY] Duty cycle on channel {channel_index} ({channel['freq']} Hz) → used={used_airtime:.2f}s, allowed={window * limit:.2f}s"
+        )
+
+        return available >= airtime_s
+
+
+    def record_transmission(self, channel_index: int, airtime_s: float):
+        self.last_transmissions[channel_index].append((time.time(), airtime_s))

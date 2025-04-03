@@ -3,7 +3,7 @@ import logging
 from radio_phy import RadioPHY
 from lorawan_protocol import LoRaWANProtocol
 from mac_commands import MACCommandHandler, parse_mac_commands
-from utils import RadioEnvelope
+from utils import RadioEnvelope, calculate_airtime
 from channel_simulator import ChannelSimulator
 
 logger = logging.getLogger(__name__)
@@ -63,7 +63,26 @@ class LoRaWANStack:
             if confirmed and self.ack_event.is_set():
                 logger.info(f"[LoRaWANStack] ACK received — stopping retransmissions at attempt {attempt}")
                 break
+            
+            freq_hz = self.radio.get_current_frequency()
+            sf = self.radio.get_spreading_factor()
+            bw = self.radio.get_bandwidth()
+            payload_size = len(uplink_bytes)
+            airtime = calculate_airtime(payload_size, sf, bw)
 
+
+            available_channel_found = False
+            for _ in range(len(self.radio.enabled_channels)): 
+                if self.radio.can_transmit(self.radio.current_channel_index, airtime):
+                    available_channel_found = True 
+                    break
+                self.radio.rotate_channel()
+    
+            if not available_channel_found:
+                logger.warning(f"[LoRaWANStack] No available channel for transmission. Waiting before retry...")
+                await asyncio.sleep(2)
+                continue
+             
             envelope = RadioEnvelope(
                 payload=uplink_bytes,
                 devaddr=self.dev_addr,
@@ -86,11 +105,14 @@ class LoRaWANStack:
 
             if self.uplink_interface:
                 await self.uplink_interface(envelope)
+                self.radio.record_transmission(self.radio.current_channel_index, airtime)
                 logger.info(f"[LoRaWANStack] Uplink attempt {attempt + 1}/{nb_trans} sent for DevAddr={self.dev_addr} "
                         f"on channel {self.radio.current_channel_index} ({self.radio.get_current_frequency()} Hz)")
 
-
             self.radio.rotate_channel()
+
+            # Check where the can send is called, and if we should calculcate airtime here and there?
+
 
             if confirmed and attempt < nb_trans - 1:
                 await asyncio.sleep(self.radio.rx_delay_secs + 1)

@@ -77,6 +77,23 @@ def dr_to_sf_bw(dr_index: int, region: str = "EU868") -> tuple[int, int]:
         return EU868_DR_MAP.get(dr_index, (None, None))
     raise NotImplementedError(f"Region '{region}' not supported.")
 
+def calculate_airtime(payload_size: int, sf: int, bw: int) -> float:
+    """
+    Estimate airtime of a LoRa packet in seconds.
+    Assumes typical values: CR=4/5, header enabled, explicit mode.
+    """
+    bw_hz = bw * 1000
+    symbol_time = (2 ** sf) / bw_hz
+    preamble_symbols = 8
+
+    payload_symb_nb = 8 + max(
+        int((8 * payload_size - 4 * sf + 28 + 16) / (4 * (sf - 2))) * 4,
+        0
+    )
+
+    total_symbols = preamble_symbols + payload_symb_nb
+    airtime = total_symbols * symbol_time
+    return airtime
 
 @dataclass
 class RadioEnvelope:
