@@ -129,6 +129,13 @@ class RadioPHY:
         if not channel:
             return False
 
+        if not (channel["dr_min"] <= self.data_rate <= channel["dr_max"]):
+            logger.debug(
+                f"[RadioPHY] DR {self.data_rate} not supported on channel {channel_index} "
+                f"(allowed range: DR{channel['dr_min']}–DR{channel['dr_max']})"
+            )
+            return False
+
         limit = channel.get("duty_cycle", 1.0)
         if ready:
             logger.info(
