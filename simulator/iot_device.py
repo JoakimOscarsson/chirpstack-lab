@@ -52,7 +52,7 @@ class IotDevice:
         while True:
             raw_payload = await self.generate_app_payload()
             logger.debug(f"[IotDevice] Generated app payload: {raw_payload.hex()}")
-            await self.lorawan_module.send(raw_payload, confirmed = True)
+            await self.lorawan_module.send(raw_payload, confirmed = False)
             await asyncio.sleep(self.send_interval)
 
     async def receive_downlink(self, data: bytes):

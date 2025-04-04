@@ -9,7 +9,7 @@ from message_bus import MessageBus  # Your pub/sub event system
 
 # --------- Global Logger Configuration ---------
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 )
 logger = logging.getLogger(__name__)
@@ -115,11 +115,16 @@ if __name__ == "__main__":
 """
 backlog:
 
-- Simulate duty cycle restrictions
-- Add RX1/2 windows logic and match delays
+- explain jitter
+- Change retransmittions to wait for rx windows to close, and a backoff to pass
+- Make sure we stop unconfirmed transmissions if we get an ack
+- investiagte and implement aggregated duty cycle limits
+
+- mac command queue
 - Simulate DevStatusAns and get stubbattery iot from device
 - Implement channel hopping and expand channel simulation to accountr for busy channels
 - Remove pingslotchannelreq since its only for class b?
+- Add choice to set init DR
 
 
 
@@ -128,7 +133,6 @@ backlog:
 
 """
 Refactoring needs:
- - Architecture: Do each module, class and method respect the separation of concerns?
  - Radio envelope: turn into metadata package
  - Types: eg. environment->enum
  - function names
@@ -141,19 +145,13 @@ Refactoring needs:
 """
 
 Things to add:
-Chmas - update radio.enabled channels
-Redundancy (NbTrans) - repeat uplinks in loop
-Duty Cycle - track airtiem + delay
 rd1_dr_offset - apply offset to uplink DR
 rx2_datarate - use in RX2 receive logic
 rx2_frequency - check in downlink accept logic
 RX timing - add asyc timers and match timing windows (though I want to always receive, but nly print a debug log if wrong timing)
-Smulate usage of multiple channels
 Simulate multi-divice crowdedness on channels
-Simulate distance
 update configuration when adding devices (include options to set more parameters)
 parse non mac commands to application logic and print there
-confirmed up/down links
 autojoin
 
 

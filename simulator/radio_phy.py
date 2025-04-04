@@ -40,14 +40,14 @@ class RadioPHY:
 
         self.next_tx_time = defaultdict(lambda: 0.0)
 
-    def get_spreading_factor(self):
+    def get_spreading_factor(self, dr: int = None):
         """Return the spreading factor based on the current data rate."""
-        sf, _ = dr_to_sf_bw(self.data_rate)
+        sf, _ = dr_to_sf_bw(self.data_rate if dr is None else dr)
         return sf
 
-    def get_bandwidth(self):
+    def get_bandwidth(self, dr: int = None):
         """Return the bandwidth in kHz based on the current data rate."""
-        _, bw = dr_to_sf_bw(self.data_rate)
+        _, bw = dr_to_sf_bw(self.data_rate if dr is None else dr)
         return bw
 
     def get_current_frequency(self):
@@ -71,6 +71,19 @@ class RadioPHY:
             f"[RadioPHY] RX Params updated: RX1 Offset={rx1_offset}, "
             f"RX2 DR={rx2_datarate}, RX2 Freq={rx2_frequency}, Delay={delay}s"
         )
+
+    def get_symbol_duration(self, sf: int, bw_khz: int) -> float:
+        """
+        Calculate the duration of one LoRa symbol in seconds.
+        """
+        return (2 ** sf) / (bw_khz * 1000)
+
+    def get_window_duration(self, sf: int, bw_khz: int, symbols: int = 8) -> float:
+        """
+        Calculate RX1 window duration based on symbol time.
+        """
+        symbol_time = self.get_symbol_duration(sf, bw_khz)
+        return symbol_time * symbols
 
     def update_link_adr(self, data_rate_tx_power: int, nb_trans = None):
         """

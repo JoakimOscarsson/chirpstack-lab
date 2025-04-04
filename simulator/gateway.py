@@ -12,13 +12,14 @@ class GatewayProtocol(asyncio.DatagramProtocol):
     """
     Minimal protocol for sending UDP datagrams.
     """
-    def __init__(self, logger, remote_ip, remote_port, downlink_handler):
+    def __init__(self, logger, remote_ip, remote_port, downlink_handler, gateway):
         super().__init__()
         self.logger = logger
         self.remote_ip = remote_ip
         self.remote_port = remote_port
-        self.transport = None
         self.downlink_handler = downlink_handler
+        self.gateway = gateway  # reference to Gateway instance
+        self.transport = None
 
     def connection_made(self, transport):
         """
@@ -59,13 +60,29 @@ class GatewayProtocol(asyncio.DatagramProtocol):
                         tx_power=txpk.get("powe"),
                         timestamp=txpk.get("tmst"),
                     )
-
                     self.logger.debug("Received downlink from server, dispatching to handler...")
-                    asyncio.create_task(self.downlink_handler(envelope))
+                    asyncio.create_task(self._handle_scheduled_downlink(envelope))
                 else:
                     self.logger.warning("PULL_RESP missing 'data' field.")
             except Exception as e:
                 self.logger.error(f"Failed to handle PULL_RESP: {e}")
+
+    def get_concentrator_tmst(self):
+        return self.gateway.get_concentrator_tmst()
+    
+    async def _handle_scheduled_downlink(self, envelope: RadioEnvelope):
+        now_tmst = self.get_concentrator_tmst()
+        wait_us = (envelope.timestamp - now_tmst) % (2**32)
+        wait_s = wait_us / 1_000_000
+        self.logger.debug(f""
+                         f"Received downlink at tmst={envelope.timestamp}, "
+                         f"current tmst={now_tmst}, wait_s={wait_s:.3f}"
+                         f""
+                         )
+        if wait_s > 0:
+            self.logger.debug(f"[Gateway] Sleeping {wait_s:.3f}s to match downlink tmst={envelope.timestamp}")
+            await asyncio.sleep(wait_s)
+        await self.downlink_handler(envelope)
 
     def error_received(self, exc):
         self.logger.error(f"UDP error received: {exc}")
@@ -86,15 +103,24 @@ class Gateway:
         self.transport = None
         self.protocol = None
         self.downlink_handler = downlink_handler
+        self.concentrator_start_time = time.monotonic()
 
+    def get_concentrator_tmst(self):
+        elapsed = time.monotonic() - self.concentrator_start_time
+        return int(elapsed * 1_000_000) % (2**32)
 
     async def setup_async(self):
         """
         Initialize the async UDP transport & protocol via create_datagram_endpoint.
         """
         loop = asyncio.get_running_loop()
-        # Create our custom protocol instance
-        protocol_factory = lambda: GatewayProtocol(self.logger, self.udp_ip, self.udp_port, self.downlink_handler)
+        protocol_factory = lambda: GatewayProtocol(
+            self.logger,
+            self.udp_ip,
+            self.udp_port,
+            self.downlink_handler,
+            self
+        )
 
         # local_addr: we can bind to 0.0.0.0, ephemeral port if we just want to send
         # remote_addr: can be omitted or used for a "connected" UDP socket
@@ -118,7 +144,7 @@ class Gateway:
 
 
         rxpk = {
-            "tmst": envelope.timestamp,  # int(time.time() * 1e6) % (2**32),
+            "tmst": self.get_concentrator_tmst(),  # TODO: Remove timestamp from envelope
             "time": envelope.utc_time,  # datetime.utcnow().isoformat() + "Z",
             "chan": envelope.chan,
             "rfch": 0,
