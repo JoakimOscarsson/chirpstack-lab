@@ -115,10 +115,10 @@ if __name__ == "__main__":
 """
 backlog:
 
-- mac command queue
-- Simulate DevStatusAns and get stubbattery iot from device
+- add last snr to dev status
+
 - Implement channel hopping and expand channel simulation to accountr for busy channels
-- Remove pingslotchannelreq since its only for class b?
+
 - Add choice to set init DR
 
 

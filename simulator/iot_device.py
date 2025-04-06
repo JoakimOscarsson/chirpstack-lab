@@ -13,6 +13,7 @@ class IotDevice:
     details like frame counters, encryption, etc.
     """
 
+
     def __init__(self, dev_addr, nwk_skey, app_skey, distance, environment, send_interval=10, message_bus=None):
         """
         :param dev_addr: Device address (e.g. '26011BDA')
@@ -29,8 +30,18 @@ class IotDevice:
             environment=environment,
             message_bus=message_bus
         )
+        self.lorawan_module.mac_handler.get_battery_callback = self.get_battery_status  # TODO: implement setter instead of this callchain.
         self.lorawan_module.ack_callback = self.on_acc_received
         logger.info(f"[IotDevice] Initialized with DevAddr={dev_addr}")
+
+    def get_battery_status(self) -> int:
+        """
+        Return battery level:
+        - 0: external
+        - 1–254: 1–100 (%)
+        - 255: unknown
+        """
+        return 240
 
     def on_acc_received(self):
         """
@@ -50,10 +61,10 @@ class IotDevice:
         Periodically generate and send application payloads via the LoRaWAN stack.
         """
         while True:
-            require_ack = True
+            require_ack = False
             raw_payload = await self.generate_app_payload()
             logger.info(f"           \033[94mNew transmission from application. Require ACK: {require_ack}\033[0m")
-            await self.lorawan_module.send(raw_payload, confirmed = require_ack)
+            await self.lorawan_module.safe_send(raw_payload, confirmed = require_ack)
             await asyncio.sleep(self.send_interval)
 
     async def receive_downlink(self, data: bytes):

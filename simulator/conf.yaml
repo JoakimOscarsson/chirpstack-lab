@@ -5,7 +5,7 @@ gateway:
 
 devices:
   - devaddr: "26011BDA"
-    distance: 5750  # in meters
+    distance: 2000  # in meters (5750)
     environment: "suburban"  # urban / suburban / rural
     send_interval: 10
 

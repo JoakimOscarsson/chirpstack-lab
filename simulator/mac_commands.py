@@ -22,7 +22,6 @@ CID_NAMES = {
     0x06: "DevStatusReq",
     0x07: "NewChannelReq",
     0x08: "RXTimingSetupReq",
-    0x0D: "PingSlotChannelReq",
 }
 
 CID_LENGTHS = {
@@ -33,7 +32,6 @@ CID_LENGTHS = {
     0x06: 0,
     0x07: 5,
     0x08: 1,
-    0x0D: 3,
 }
 
 # CLASS_A_MAC_COMMANDS_LORAWAN_1_0_X = {
@@ -116,9 +114,6 @@ def decode_mac_command(cid: int, payload: bytes) -> dict:
         }
     elif cid == 0x08:  # RXTimingSetupReq
         return {"RX1_Delay": f"{payload[0]} seconds"}
-    elif cid == 0x0D:  # PingSlotChannelReq
-        freq = int.from_bytes(payload[0:3], 'little') * 100
-        return {"PingSlotFrequency": f"{freq} Hz"}
     else:
         return {"Raw": payload.hex()}
 
@@ -129,8 +124,9 @@ class MACCommandHandler:
     Uses a CID-to-handler registry.
     """
 
-    def __init__(self, radio: RadioPHY):
+    def __init__(self, radio: RadioPHY, get_battery_callback: Optional[Callable[[], int]] = None):
         self.radio = radio
+        self.get_battery_callback = get_battery_callback
         self.registry: dict[int, Callable[[MacCommand], None]] = {
             0x03: self._handle_link_adr_req,
             0x04: self._handle_duty_cycle_req,
@@ -139,6 +135,7 @@ class MACCommandHandler:
             0x08: self._handle_rx_timing_setup_req,
             0x06: self._handle_dev_status_req,
         }
+        self.pending_mac_responses = []
 
     def apply_mac_command(self, cmd: MacCommand):
         handler = self.registry.get(cmd.cid)
@@ -154,11 +151,15 @@ class MACCommandHandler:
         self.radio.update_link_adr(dr_tx, nb_trans)
         self.radio.apply_channel_mask(ch_mask)
 
+        status = 0b00000111  # Assume success for now
+        self.pending_mac_responses.append((0x03, bytes([status])))
+
     def _handle_duty_cycle_req(self, cmd: MacCommand):
         val = cmd.payload[0]
         max_duty_cycle = 1 / (2 ** val)
         self.radio.set_max_duty_cycle(max_duty_cycle)
         logger.info(f"                                   \033[92mUpdated MaxDutyCycle: 1/{2 ** val} ({max_duty_cycle:.5f})\033[0m")
+        self.pending_mac_responses.append((0x04, b''))
 
     def _handle_rx_param_setup_req(self, cmd: MacCommand):
         self.radio.set_rx_params(
@@ -168,6 +169,9 @@ class MACCommandHandler:
             delay=1
         )
         logger.debug("[MAC] Applied RXParamSetupReq")
+        # Status bits: bit 0=RX1 offset OK, bit 1=RX2 DR OK, bit 2=RX2 freq OK
+        status = 0b00000111  # Assume valid for now
+        self.pending_mac_responses.append((0x05, bytes([status])))
 
     def _handle_new_channel_req(self, cmd: MacCommand):
         self.radio.add_channel(
@@ -176,13 +180,42 @@ class MACCommandHandler:
             dr_min=cmd.decoded["DR_Min"],
             dr_max=cmd.decoded["DR_Max"]
         )
+        # Bit 0: Channel index OK
+        # Bit 1: DR range OK
+        # Bit 2: Channel freq OK
+        status = 0b00000111  # Assume OK
+        self.pending_mac_responses.append((0x07, bytes([status])))
+
 
     def _handle_rx_timing_setup_req(self, cmd: MacCommand):
         self.radio.rx_delay_secs = int(cmd.decoded["RX1_Delay"].split()[0])
         logger.info(f"                                 \033[95mUpdated RX1_Delay: {self.radio.rx_delay_secs}.\033[0m")
         logger.debug("[MAC] Applied RXTimingSetupReq")
+        self.pending_mac_responses.append((0x08, b''))
 
     def _handle_dev_status_req(self, cmd: MacCommand):
-        logger.warning("                              \033[93mDevStatusReq received, but not yet implemented.\033[0m")
-        logger.debug("[MAC] DevStatusReq not yet implemented (would normally queue response)")
+        battery = 255
+        if self.get_battery_callback:
+            try:
+                battery = self.get_battery_callback()
+            except Exception as e:
+                logger.warning(f"[MAC] Failed to get battery status: {e}")
+        
+        margin = self.radio.last_snr if hasattr(self.radio, 'last_snr') else 0
+        margin = max(-32, min(int(margin), 31))  # SNR margin capped as per spec
+        payload = bytes([battery, margin & 0xFF])
+        
+        logger.info(f"                                 \033[95mQueuing DevStatusAns: Battery={battery}, Margin={margin}\033[0m")
+        self.pending_mac_responses.append((0x06, payload))  # CID, payload
+    
+    def get_mac_response_payload(self) -> bytes:
+        """
+        Build a concatenated MAC payload from all pending MAC responses (e.g., DevStatusAns).
+        Clears the pending queue after building the response.
+        """
+        mac_bytes = b''
+        for cid, payload in self.pending_mac_responses:
+            mac_bytes += bytes([cid]) + payload
+        self.pending_mac_responses.clear()
+        return mac_bytes
 

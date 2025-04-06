@@ -44,6 +44,7 @@ class LoRaWANStack:
         self.rx1_open = False
         self.rx2_open = False
 
+        self.send_lock = asyncio.Lock()
 
         logger.info(f"    Initialized for DevAddr={dev_addr}")
 
@@ -51,7 +52,15 @@ class LoRaWANStack:
         """Set async callback used to forward uplinks to the gateway."""
         self.uplink_interface = callback
 
-    async def send(self, app_payload: bytes, fport: int = 1, confirmed: bool = False):
+
+    async def safe_send(self, app_payload: bytes, fport: int = 1, confirmed: bool = False):
+        """
+        Send an uplink payload with a lock to ensure thread safety.
+        """
+        async with self.send_lock:
+            await self._send(app_payload, fport, confirmed)
+
+    async def _send(self, app_payload: bytes, fport: int = 1, confirmed: bool = False):
         """
         Build and transmit an uplink containing the application payload.
         """
@@ -255,6 +264,16 @@ class LoRaWANStack:
         fopts_len = fctrl & 0x0F
         fcnt = int.from_bytes(raw_bytes[6:8], 'little')
 
+
+        # Apply MAC commands in FOpts (if present)
+        fopts = raw_bytes[8:8 + fopts_len]
+        if fopts:
+            commands = parse_mac_commands(fopts)
+            for cmd in commands:
+                logger.info(f"                            Received MAC command (FOpts): {cmd.name} ({cmd.cid})")
+                self.mac_handler.apply_mac_command(cmd)
+
+        # Handle ACK flag (even if there's no payload)
         ack_flag = (fctrl & 0b00100000) != 0
         if self.waiting_for_ack and ack_flag:
             logger.debug(f"[LoRaWANStack] ACK received in downlink FCnt={fcnt}.")
@@ -262,11 +281,14 @@ class LoRaWANStack:
             if self.ack_callback:
                 self.ack_callback()
 
+        # Only try to extract FPort/FRMPayload if long enough
         fport_index = 8 + fopts_len
+        has_frmpayload = fport_index < len(raw_bytes) - 4
 
-        if fport_index >= len(raw_bytes) - 4:
-            logger.warning("[LoRaWANStack] Downlink malformed: FPort index exceeds length")
-            return False
+        if not has_frmpayload:
+            logger.info("                        No FPort/FRMPayload in downlink — MAC-only via FOpts.")
+            return True
+
 
         fport = raw_bytes[fport_index]
         frmpayload = raw_bytes[fport_index + 1:-4]  # Strip MIC
@@ -277,6 +299,13 @@ class LoRaWANStack:
             for cmd in commands:
                 logger.info(f"                            Received MAC command: {cmd.name} ({cmd.cid})")
                 self.mac_handler.apply_mac_command(cmd)
+            
+            mac_response = self.mac_handler.get_mac_response_payload()
+            if mac_response:
+                async with self.send_lock:
+                    logger.info("        Sending MAC-only response uplink")
+                    await self._send(mac_response, fport=0, confirmed=False)
+
         else:
             logger.info(f"[LoRaWANStack] App payload (port {fport}): {frmpayload.hex()}")
 
