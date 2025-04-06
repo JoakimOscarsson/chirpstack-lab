@@ -115,7 +115,6 @@ if __name__ == "__main__":
 """
 backlog:
 
-- investiagte and implement aggregated duty cycle limits
 - mac command queue
 - Simulate DevStatusAns and get stubbattery iot from device
 - Implement channel hopping and expand channel simulation to accountr for busy channels

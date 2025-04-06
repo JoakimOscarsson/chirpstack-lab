@@ -51,7 +51,6 @@ class LoRaWANStack:
         """Set async callback used to forward uplinks to the gateway."""
         self.uplink_interface = callback
 
-
     async def send(self, app_payload: bytes, fport: int = 1, confirmed: bool = False):
         """
         Build and transmit an uplink containing the application payload.
@@ -120,6 +119,12 @@ class LoRaWANStack:
                 break
 
     async def _check_channel_availability(self, airtime) -> tuple[bool, Optional[float]]:
+        agg_ok, agg_wait = self.radio.can_transmit_aggregated(airtime)
+        if not agg_ok:
+            logger.info(f"                    Aggregated duty cycle exceeded, wait {agg_wait:.2f}s.")
+            return False, agg_wait        
+
+
         shortest_time_to_ready = float("inf")
 
         for _ in range(len(self.radio.enabled_channels)):

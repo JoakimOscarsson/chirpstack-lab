@@ -42,7 +42,13 @@ class RadioPHY:
         self.nbtrans_backoff_range = (0.5, 2.0)
         self.retry_backoff_range = (2.0, 6.0)
 
+        self.aggregated_next_tx_time = 0.0
+        self.aggregated_duty_cycle = 1  # 1.0 = no limit
         self.next_tx_time = defaultdict(lambda: 0.0)
+
+    def set_max_duty_cycle(self, duty_cycle: float):
+        self.aggregated_duty_cycle = duty_cycle
+        logger.info(f"                                    \033[95mUpdated aggregated duty cycle to {self.aggregated_duty_cycle}.\033[0m")
 
     def get_spreading_factor(self, dr: int = None):
         """Return the spreading factor based on the current data rate."""
@@ -148,6 +154,16 @@ class RadioPHY:
         self.current_channel_index = available_channels[(idx + 1) % len(available_channels)]
         logger.debug(f"[RadioPHY] Hopped to channel index {self.current_channel_index}")
         
+    def can_transmit_aggregated(self, airtime_s: float) -> tuple[bool, Optional[float]]:
+        now = time.time()
+        if self.aggregated_duty_cycle >= 1.0:
+            return True, None
+        if now >= self.aggregated_next_tx_time:
+            return True, None
+        wait_for = self.aggregated_next_tx_time - now
+        logger.debug(f"[RadioPHY] Aggregated duty cycle wait: {wait_for:.2f}s remaining")
+        return False, wait_for
+
     def can_transmit(self, channel_index: int, airtime_s: float) -> tuple[bool, Optional[float]]:
         now = time.time()
         ready = now >= self.next_tx_time[channel_index]
@@ -181,3 +197,7 @@ class RadioPHY:
         off_time = airtime_s * (1.0 / duty_cycle - 1.0)
         self.next_tx_time[channel_index] = now + off_time
         logger.debug(f"[RadioPHY] TX on channel {channel_index} ({self.enabled_channels[channel_index]['freq']} Hz) — Airtime: {airtime_s:.2f}s, Next TX after: {off_time:.2f}s")
+        if self.aggregated_duty_cycle < 1.0:
+            off_time = airtime_s * (1.0 / self.aggregated_duty_cycle - 1.0)
+            self.aggregated_next_tx_time = max(self.aggregated_next_tx_time, now + off_time)
+            logger.debug(f"[RadioPHY] Aggregated TX → Airtime: {airtime_s:.2f}s, Next TX after: {off_time:.2f}s")

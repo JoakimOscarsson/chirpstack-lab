@@ -155,7 +155,10 @@ class MACCommandHandler:
         self.radio.apply_channel_mask(ch_mask)
 
     def _handle_duty_cycle_req(self, cmd: MacCommand):
-        logger.warning("                                \033[93mDutyCycleReq received, but not yet implemented.\033[0m")
+        val = cmd.payload[0]
+        max_duty_cycle = 1 / (2 ** val)
+        self.radio.set_max_duty_cycle(max_duty_cycle)
+        logger.info(f"                                   \033[92mUpdated MaxDutyCycle: 1/{2 ** val} ({max_duty_cycle:.5f})\033[0m")
 
     def _handle_rx_param_setup_req(self, cmd: MacCommand):
         self.radio.set_rx_params(
@@ -176,7 +179,7 @@ class MACCommandHandler:
 
     def _handle_rx_timing_setup_req(self, cmd: MacCommand):
         self.radio.rx_delay_secs = int(cmd.decoded["RX1_Delay"].split()[0])
-        logger.info("                                \033[93mUpdated RX1_Delay.\033[0m")
+        logger.info(f"                                 \033[95mUpdated RX1_Delay: {self.radio.rx_delay_secs}.\033[0m")
         logger.debug("[MAC] Applied RXTimingSetupReq")
 
     def _handle_dev_status_req(self, cmd: MacCommand):
