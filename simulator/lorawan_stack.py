@@ -5,6 +5,7 @@ from radio_phy import RadioPHY
 from lorawan_protocol import LoRaWANProtocol
 from mac_commands import MACCommandHandler, parse_mac_commands
 from utils import RadioEnvelope, calculate_airtime
+from typing import Optional
 from channel_simulator import ChannelSimulator
 
 logger = logging.getLogger(__name__)
@@ -44,16 +45,18 @@ class LoRaWANStack:
         self.rx2_open = False
 
 
-        logger.info(f"[LoRaWANStack] Initialized for DevAddr={dev_addr}")
+        logger.info(f"    Initialized for DevAddr={dev_addr}")
 
     def set_uplink_interface(self, callback):
         """Set async callback used to forward uplinks to the gateway."""
         self.uplink_interface = callback
 
+
     async def send(self, app_payload: bytes, fport: int = 1, confirmed: bool = False):
         """
         Build and transmit an uplink containing the application payload.
         """
+        max_ack_attempts = self.radio.max_ack_retries if confirmed else 1
         nb_trans = self.radio.nb_trans or 1
         fcnt = self.protocol.frame_counter
 
@@ -61,82 +64,107 @@ class LoRaWANStack:
             self.waiting_for_ack = True
             self.pending_fcnt = fcnt
             self.ack_event = asyncio.Event()
-
-        uplink_bytes = await self.protocol.build_uplink_frame(app_payload, fport, confirmed)
         
-        sf = self.radio.get_spreading_factor()
-        bw = self.radio.get_bandwidth()
+        uplink_bytes = await self.protocol.build_uplink_frame(app_payload, fport, confirmed)
+        sf, bw = self.radio.get_spreading_factor(), self.radio.get_bandwidth()
         payload_size = len(uplink_bytes)
         airtime = calculate_airtime(payload_size, sf, bw)
 
-        for attempt in range(nb_trans):
-            if confirmed and self.ack_event.is_set():
-                logger.info(f"[LoRaWANStack] ACK received — stopping retransmissions at attempt {attempt}")
-                break
-
-            available_channel_found = False
-            for _ in range(len(self.radio.enabled_channels)): 
-                if self.radio.can_transmit(self.radio.current_channel_index, airtime):
-                    available_channel_found = True 
-                    break
-                self.radio.rotate_channel()
-    
-            if not available_channel_found:
-                logger.warning(f"[LoRaWANStack] No available channel for transmission. Waiting before retry...")
-                await asyncio.sleep(2)
-                continue
-
-            freq_hz = self.radio.get_current_frequency()
-
-            envelope = RadioEnvelope(
-                payload=uplink_bytes,
-                devaddr=self.dev_addr,
-                freq=freq_hz / 1e6,
-                chan=self.radio.current_channel_index,
-                spreading_factor=sf,
-                bandwidth=bw,
-                coding_rate=self.radio.coding_rate,
-                data_rate=f"SF{sf}BW{bw}",
-                tx_power=self.radio.tx_power,
-                distance=self.distance,
-                environment=self.environment
+        for ack_attempt in range(max_ack_attempts):
+            logger.info(f"            Sending uplink (Attempt {ack_attempt+1}/{max_ack_attempts})")
+            await self._send_nb_transmissions(
+                uplink_bytes, nb_trans, sf, bw, airtime, ack_attempt, confirmed
             )
-            envelope.enrich()
-
-            envelope = await self.channel_simulator.simulate_uplink(envelope)
-            if envelope is None:
-                logger.info("[LoRaWANStack] Uplink dropped by channel simulator.")
-                continue
-
-            if self.uplink_interface:
-                await self.uplink_interface(envelope)
-                self.radio.record_transmission(self.radio.current_channel_index, airtime)
-                asyncio.create_task(self._control_tx1_window())
-                logger.info(f"[LoRaWANStack] Uplink attempt {attempt + 1}/{nb_trans} sent for DevAddr={self.dev_addr} "
-                        f"on channel {self.radio.current_channel_index} ({freq_hz} Hz)")
-
-
-            rx_total_delay = self.radio.rx_delay_secs + 1
-            rx_jitter = random.uniform(0.2, 0.5)
-            await asyncio.sleep(rx_total_delay + rx_jitter)
-            
-            self.radio.rotate_channel()
-
-            if not confirmed and attempt + 1 >= nb_trans:
+            if not confirmed:
                 break
+            if self.ack_event.is_set():
+                logger.info(f"            \033[92mTransmission successful after {ack_attempt+1} attempt(s).\033[0m")
+                break
+            await self._handle_ack_timeout_and_backoff(ack_attempt)
 
-        if confirmed and self.ack_event and not self.ack_event.is_set():
-            try:
-                timeout = self.radio.rx_delay_secs + 1.1  # small buffer over RX2
-                logger.debug(f"[LoRaWANStack] Waiting for final ACK (timeout={timeout}s)")
-                await asyncio.wait_for(self.ack_event.wait(), timeout=timeout)
-            except asyncio.TimeoutError:
-                logger.warning(f"[LoRaWANStack] ACK not received after {nb_trans} attempts.")
-    
         self.waiting_for_ack = False
         self.pending_fcnt = None
         self.ack_event = None
+    
+    async def _send_nb_transmissions(self, uplink_bytes, nb_trans, sf, bw, airtime, ack_attempt, confirmed):
+        for nb_attempt in range(nb_trans):
+            logger.info(f"                Transmission number {nb_attempt+1}/{nb_trans}")   
+            while True:
+                available, time_to_ready = await self._check_channel_availability(airtime)
+                if available:
+                    break
+                if time_to_ready is not None and time_to_ready != float("inf"):
+                    logger.info(f"                    All channels busy. Waiting {time_to_ready:.2f}s.")
+                    await asyncio.sleep(time_to_ready)
+                else:
+                    logger.error("                    No available channel for transmission. Waiting fallback 1s.")
+                    await asyncio.sleep(1.0)
 
+            envelope = await self._build_envelope(uplink_bytes, sf, bw)
+            envelope = await self.channel_simulator.simulate_uplink(envelope)
+            if envelope is not None:  # Uplink dropped by channel simulator
+                if self.uplink_interface:  # TODO: Change design so this is mandatory when initializing the stack
+                    logger.info(f"                    Uplink sent to gateway on channel {self.radio.current_channel_index} ")
+                    await self.uplink_interface(envelope)
+                    logger.debug(
+                        f"[LoRaWANStack] Sent nbTrans {nb_attempt + 1}/{nb_trans} (retry {ack_attempt}) "
+                        f"on channel {self.radio.current_channel_index} ({self.radio.get_current_frequency()} Hz)"
+                    )
+
+            self.radio.record_transmission(self.radio.current_channel_index, airtime)  # For calculating time to next allowed transmission
+            asyncio.create_task(self._control_tx1_window())
+            await asyncio.sleep(self.radio.rx_delay_secs + 1 + random.uniform(*self.radio.nbtrans_backoff_range))
+            self.radio.rotate_channel()
+            if confirmed and self.ack_event.is_set():
+                logger.info(f"                \033[92mACK received after nb_trans number {nb_attempt + 1}.\033[0m")
+                break
+
+    async def _check_channel_availability(self, airtime) -> tuple[bool, Optional[float]]:
+        shortest_time_to_ready = float("inf")
+
+        for _ in range(len(self.radio.enabled_channels)):
+            ready, time_to_ready = self.radio.can_transmit(self.radio.current_channel_index, airtime)
+            if ready:
+                logger.debug(f"                    Channel {self.radio.current_channel_index} is available for transmission.")
+                return True, None
+            elif time_to_ready is not None:
+                shortest_time_to_ready = min(shortest_time_to_ready, time_to_ready)
+            self.radio.rotate_channel()
+        
+        if shortest_time_to_ready != float("inf"):
+            logger.info(f"                    No channel available for another {shortest_time_to_ready:.2f}s.")
+            return False, shortest_time_to_ready
+        else:
+            logger.error("                    No available channel for transmission.")
+            return False, None
+            
+    async def _build_envelope(self, payload, sf, bw) -> RadioEnvelope:
+        envelope = RadioEnvelope(
+            payload=payload,
+            devaddr=self.dev_addr,
+            freq=self.radio.get_current_frequency() / 1e6,
+            chan=self.radio.current_channel_index,
+            spreading_factor=sf,
+            bandwidth=bw,
+            coding_rate=self.radio.coding_rate,
+            data_rate=f"SF{sf}BW{bw}",
+            tx_power=self.radio.tx_power,
+            distance=self.distance,
+            environment=self.environment
+        )
+        envelope.enrich()
+        return envelope
+    
+    async def _handle_ack_timeout_and_backoff(self, ack_attempt):
+        try:
+            timeout = self.radio.rx_delay_secs + 1.1
+            logger.debug(f"[LoRaWANStack] Waiting for ACK (retry {ack_attempt + 1}) timeout={timeout}s")
+            await asyncio.wait_for(self.ack_event.wait(), timeout=timeout)
+        except asyncio.TimeoutError:
+            logger.warning(f"         \033[93mACK not received after attempt {ack_attempt + 1}/{self.radio.max_ack_retries}\033[0m")
+            backoff = random.uniform(*self.radio.retry_backoff_range) * (ack_attempt + 1)
+            logger.debug(f"[LoRaWANStack] Backing off {backoff:.1f}s before retrying confirmed uplink")
+            await asyncio.sleep(backoff)
 
     async def _control_tx1_window(self):
         """
@@ -149,11 +177,11 @@ class LoRaWANStack:
         await asyncio.sleep(rx1_delay - rx1_jitter_tolerance)
         self.rx1_open = True
         asyncio.create_task(self._control_tx2_window(rx1_jitter_tolerance))
-        logger.debug(f"[LoRaWANStack] RX1 window opened for DevAddr={self.dev_addr}")
+        logger.info(f"                    RX1 window opened for DevAddr={self.dev_addr}")
         
         await asyncio.sleep(rx1_jitter_tolerance + rx1_duration)
         self.rx1_open = False
-        logger.debug(f"[LoRaWANStack] RX1 window closed for DevAddr={self.dev_addr}")
+        logger.info(f"                    RX1 window closed for DevAddr={self.dev_addr}")
 
     async def _control_tx2_window(self, jitter_tolerance):
         """
@@ -164,12 +192,12 @@ class LoRaWANStack:
         rx2_bw = self.radio.get_bandwidth(self.radio.rx2_datarate)
         rx2_duration = self.radio.get_window_duration(rx2_sf, rx2_bw)
 
-        await asyncio.sleep(1 / jitter_tolerance)
+        await asyncio.sleep(1 - jitter_tolerance)
         self.rx2_open = True
-        logger.debug(f"[LoRaWANStack] RX2 window opened for DevAddr={self.dev_addr}")
+        logger.info(f"                    RX2 window opened for DevAddr={self.dev_addr}")
         await asyncio.sleep(rx2_duration + jitter_tolerance)
         self.rx2_open = False
-        logger.debug(f"[LoRaWANStack] RX2 window closed for DevAddr={self.dev_addr}")
+        logger.info(f"                    RX2 window closed for DevAddr={self.dev_addr}")
 
     async def _receive_downlink_message(self, envelope: RadioEnvelope):  # TODO: Maybe this is more of a incoming transmision attempt, rather than received?
         """
@@ -184,7 +212,7 @@ class LoRaWANStack:
 
         payload = await self.channel_simulator.simulate_downlink(envelope)
         if payload is None:
-            logger.info(f"[LoRaWANStack] Downlink dropped for DevAddr={self.dev_addr}")
+            logger.info(f"                        \033[91mDownlink dropped for DevAddr={self.dev_addr}\033[0m")
             return
         rx1_freq = self.radio.get_current_frequency()
         rx2_freq = self.radio.rx2_frequency
@@ -200,7 +228,7 @@ class LoRaWANStack:
             )
             return
         
-        logger.debug(f"[LoRaWANStack] Downlink accepted in {window} for DevAddr={self.dev_addr}")
+        logger.info(f"                        Downlink accepted in {window} for DevAddr={self.dev_addr}")
         await self._process_downlink(payload)
 
     async def _process_downlink(self, raw_bytes: bytes):
@@ -222,15 +250,12 @@ class LoRaWANStack:
         fopts_len = fctrl & 0x0F
         fcnt = int.from_bytes(raw_bytes[6:8], 'little')
 
-        logger.debug(" ")
-        logger.debug(f"Checking ack_flag now. fctrl={fctrl}, waiting_for_ack={self.waiting_for_ack}")
         ack_flag = (fctrl & 0b00100000) != 0
         if self.waiting_for_ack and ack_flag:
-            logger.info(f"[LoRaWANStack] ACK received in downlink FCnt={fcnt}.")
+            logger.debug(f"[LoRaWANStack] ACK received in downlink FCnt={fcnt}.")
             self.ack_event.set()
             if self.ack_callback:
                 self.ack_callback()
-        logger.debug("Done checking ack_flag.")
 
         fport_index = 8 + fopts_len
 
@@ -245,6 +270,7 @@ class LoRaWANStack:
             decrypted = self.protocol.decrypt_downlink_payload(frmpayload, fcnt, is_nwk=True)
             commands = parse_mac_commands(decrypted)
             for cmd in commands:
+                logger.info(f"                            Received MAC command: {cmd.name} ({cmd.cid})")
                 self.mac_handler.apply_mac_command(cmd)
         else:
             logger.info(f"[LoRaWANStack] App payload (port {fport}): {frmpayload.hex()}")

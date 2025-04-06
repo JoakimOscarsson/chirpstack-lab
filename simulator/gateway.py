@@ -79,6 +79,7 @@ class GatewayProtocol(asyncio.DatagramProtocol):
                          f"current tmst={now_tmst}, wait_s={wait_s:.3f}"
                          f""
                          )
+        self.logger.info(f"                              \033[96mGateway received and scheduled downlink data\033[0m")
         if wait_s > 0:
             self.logger.debug(f"[Gateway] Sleeping {wait_s:.3f}s to match downlink tmst={envelope.timestamp}")
             await asyncio.sleep(wait_s)
@@ -168,7 +169,7 @@ class Gateway:
             return
 
         self.protocol.send(message)
-        self.logger.info(f"Gateway EUI={self.eui} sent uplink with token={token}.")
+        self.logger.debug(f"Gateway EUI={self.eui} sent uplink with token={token}.")
 
     async def pull_data_loop(self):
         while True:

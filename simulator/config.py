@@ -15,7 +15,7 @@ BUILT_IN_DEFAULTS = {
     "nwk_skey": "00000000000000000000000000000000",
     "app_skey": "00000000000000000000000000000000",
     "devaddr": "26011BDA",
-    "send_interval": 10,
+    "send_interval": 25,
 
     "distance": 2000,
     "environment": "suburban"

@@ -1,6 +1,7 @@
 import time
 import logging
 from utils import dr_to_sf_bw
+from typing import Optional
 from collections import defaultdict
 from utils import calculate_airtime
 
@@ -37,6 +38,9 @@ class RadioPHY:
         self.rx2_frequency = 869525000
         self.rx_delay_secs = 1
         self.nb_trans = 3
+        self.max_ack_retries = 8
+        self.nbtrans_backoff_range = (0.5, 2.0)
+        self.retry_backoff_range = (2.0, 6.0)
 
         self.next_tx_time = defaultdict(lambda: 0.0)
 
@@ -71,6 +75,10 @@ class RadioPHY:
             f"[RadioPHY] RX Params updated: RX1 Offset={rx1_offset}, "
             f"RX2 DR={rx2_datarate}, RX2 Freq={rx2_frequency}, Delay={delay}s"
         )
+        logger.info(f"                                    \033[95mUpdated rx1 dr offset to {self.rx1_dr_offset}.\033[0m")
+        logger.info(f"                                    \033[95mUpdated rx2 dr to {self.rx2_datarate}.\033[0m")
+        logger.info(f"                                    \033[95mUpdated rx2 frequency to {self.rx2_frequency}.\033[0m")
+        logger.info(f"                                    \033[95mUpdated rx delay to {self.rx_delay_secs}.\033[0m")
 
     def get_symbol_duration(self, sf: int, bw_khz: int) -> float:
         """
@@ -96,6 +104,9 @@ class RadioPHY:
         if nb_trans is not None:
             self.nb_trans = max(1, min(nb_trans, 15))
         logger.debug(f"[RadioPHY] DR updated to {self.data_rate}, TX power to {self.tx_power} dBm, NbTrans={self.nb_trans}")
+        logger.info(f"                                    \033[95mUpdated DR to {self.data_rate}.\033[0m")
+        logger.info(f"                                    \033[95mUpdated TX power to {self.tx_power} dBm.\033[0m")
+        logger.info(f"                                    \033[95mUpdated NbTrans to {self.nb_trans}.\033[0m")
 
     def add_channel(self, index: int, freq: int, dr_min: int, dr_max: int):
         """
@@ -113,6 +124,7 @@ class RadioPHY:
             "dr_max": dr_max,
             "duty_cycle": duty_cycle,
         } 
+        logger.info(f"                                    \033[95mAdded/Updated channel {index}.\033[0m")
         logger.debug(f"[RadioPHY] Channel {index} set to {freq}Hz, DR {dr_min}-{dr_max}, duty cycle={duty_cycle}")
 
     def apply_channel_mask(self, ch_mask: int):
@@ -125,6 +137,7 @@ class RadioPHY:
                 if i in self.enabled_channels:
                     logger.debug(f"[RadioPHY] Disabling channel {i}")
                     self.enabled_channels.pop(i)
+        logger.info(f"                                    \033[95mApplied channel mask {ch_mask:016b}.\033[0m")
 
     def rotate_channel(self):
         available_channels = list(self.enabled_channels.keys())
@@ -135,31 +148,32 @@ class RadioPHY:
         self.current_channel_index = available_channels[(idx + 1) % len(available_channels)]
         logger.debug(f"[RadioPHY] Hopped to channel index {self.current_channel_index}")
         
-    def can_transmit(self, channel_index: int, airtime_s: float) -> bool:
+    def can_transmit(self, channel_index: int, airtime_s: float) -> tuple[bool, Optional[float]]:
         now = time.time()
         ready = now >= self.next_tx_time[channel_index]
         channel = self.enabled_channels.get(channel_index)
         if not channel:
-            return False
+            return False, None
 
         if not (channel["dr_min"] <= self.data_rate <= channel["dr_max"]):
             logger.debug(
                 f"[RadioPHY] DR {self.data_rate} not supported on channel {channel_index} "
                 f"(allowed range: DR{channel['dr_min']}–DR{channel['dr_max']})"
             )
-            return False
+            return False, None
 
         limit = channel.get("duty_cycle", 1.0)
         if ready:
-            logger.info(
+            logger.debug(
                 f"[RadioPHY] Channel {channel_index} ({channel['freq']} Hz) ready for TX"
             )
+            return True, None
         else:
             wait_for = self.next_tx_time[channel_index] - now
-            logger.info(
+            logger.debug(
                 f"[RadioPHY] Duty cycle wait on channel {channel_index} ({channel['freq']} Hz): {wait_for:.2f}s remaining"
             )
-        return ready
+            return ready, wait_for
 
     def record_transmission(self, channel_index: int, airtime_s: float):
         now = time.time()

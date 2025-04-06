@@ -154,22 +154,8 @@ class MACCommandHandler:
         self.radio.update_link_adr(dr_tx, nb_trans)
         self.radio.apply_channel_mask(ch_mask)
 
-    def apply_channel_mask(self, ch_mask: int):
-        """
-        Apply a 16-bit ChMask to enable/disable channels.
-        """
-        for i in range(16):
-            enabled = (ch_mask >> i) & 0x01
-            if enabled:
-                if i not in self.enabled_channels:
-                    logger.warning(f"[RadioPHY] ChMask tried to enable unknown channel {i}")
-            else:
-                if i in self.enabled_channels:
-                    logger.debug(f"[RadioPHY] Disabling channel {i}")
-                    self.enabled_channels.pop(i)
-    
     def _handle_duty_cycle_req(self, cmd: MacCommand):
-        logger.warning("[MAC] DutyCycleReq received, but not yet simulated")
+        logger.warning("                                \033[93mDutyCycleReq received, but not yet implemented.\033[0m")
 
     def _handle_rx_param_setup_req(self, cmd: MacCommand):
         self.radio.set_rx_params(
@@ -178,7 +164,7 @@ class MACCommandHandler:
             rx2_frequency=int(cmd.decoded["RX2_Frequency"].split()[0]),
             delay=1
         )
-        logger.info("[MAC] Applied RXParamSetupReq")
+        logger.debug("[MAC] Applied RXParamSetupReq")
 
     def _handle_new_channel_req(self, cmd: MacCommand):
         self.radio.add_channel(
@@ -190,8 +176,10 @@ class MACCommandHandler:
 
     def _handle_rx_timing_setup_req(self, cmd: MacCommand):
         self.radio.rx_delay_secs = int(cmd.decoded["RX1_Delay"].split()[0])
-        logger.info("[MAC] Applied RXTimingSetupReq")
+        logger.info("                                \033[93mUpdated RX1_Delay.\033[0m")
+        logger.debug("[MAC] Applied RXTimingSetupReq")
 
     def _handle_dev_status_req(self, cmd: MacCommand):
-        logger.error("[MAC] DevStatusReq not yet implemented (would normally queue response)")
+        logger.warning("                              \033[93mDevStatusReq received, but not yet implemented.\033[0m")
+        logger.debug("[MAC] DevStatusReq not yet implemented (would normally queue response)")
 

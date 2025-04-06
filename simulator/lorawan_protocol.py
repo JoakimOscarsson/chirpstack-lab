@@ -67,5 +67,5 @@ class LoRaWANProtocol:
         key_bytes = bytes.fromhex(key)
         direction = 1  # Downlink
         decrypted = encrypt_payload(raw_bytes, key_bytes, devaddr_bytes, fcnt, direction)
-        logger.info(f"[LoRaWANProtocol] Decrypted FRMPayload: {decrypted.hex()}")
+        logger.debug(f"[LoRaWANProtocol] Decrypted FRMPayload: {decrypted.hex()}")
         return decrypted

@@ -36,7 +36,7 @@ class IotDevice:
         """
         Hook for application-level downlink processing (optional).
         """
-        logger.info("[IotDevice] on_acc_receive() called.")
+        logger.info("                           \033[94mApplication received ACK\033[0m")
         
     async def generate_app_payload(self) -> bytes:
         """
@@ -50,9 +50,10 @@ class IotDevice:
         Periodically generate and send application payloads via the LoRaWAN stack.
         """
         while True:
+            require_ack = False
             raw_payload = await self.generate_app_payload()
-            logger.debug(f"[IotDevice] Generated app payload: {raw_payload.hex()}")
-            await self.lorawan_module.send(raw_payload, confirmed = False)
+            logger.info(f"           \033[94mNew transmission from application. Require ACK: {require_ack}\033[0m")
+            await self.lorawan_module.send(raw_payload, confirmed = require_ack)
             await asyncio.sleep(self.send_interval)
 
     async def receive_downlink(self, data: bytes):

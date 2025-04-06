@@ -115,7 +115,7 @@ class ChannelSimulator:
             bw = int(datr_str[datr_str.index("BW") + 2:])
             return sf, bw
         except Exception as e:
-            logger.warning(f"[ChannelSimulator] Failed to parse data_rate '{datr_str}': {e}")
+            logger.warning(f"Failed to parse data_rate '{datr_str}': {e}")
             return 7, 125
 
     def _should_drop(self, rssi, snr, coding_rate="4/5"):
@@ -144,6 +144,7 @@ class ChannelSimulator:
         return random.random() < drop_chance
 
     async def simulate_uplink(self, envelope):
+        chan = envelope.chan or 0
         sf, bw = self._parse_data_rate(envelope.data_rate)
         tx_power = envelope.tx_power or 14  # default
         rssi = self._calculate_rssi(tx_power, self.distance,  sf, bw, self.environment)
@@ -163,7 +164,7 @@ class ChannelSimulator:
         envelope.timestamp = int(time.time() * 1e6) % (2**32)
 
         if drop_flag:
-            logger.info(f"[ChannelSimulator] Uplink dropped (RSSI={rssi}, SNR={snr})")
+            logger.info(f"                \033[91mUplink dropped on channel {chan} (RSSI={rssi}, SNR={snr})\033[0m")
             return None
 
         return envelope
@@ -186,7 +187,7 @@ class ChannelSimulator:
         )
 
         if drop_flag:
-            logger.info(f"[ChannelSimulator] Downlink dropped (RSSI={rssi}, SNR={snr})")
+            logger.debug(f"                    \033[91mDownlink dropped. (RSSI={rssi}, SNR={snr})\033[0m")
             return None
 
         return envelope.payload

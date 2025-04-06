@@ -9,7 +9,7 @@ from message_bus import MessageBus  # Your pub/sub event system
 
 # --------- Global Logger Configuration ---------
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 )
 logger = logging.getLogger(__name__)
@@ -115,11 +115,11 @@ if __name__ == "__main__":
 """
 backlog:
 
-- explain jitter
+- check log format for ack received
 - Change retransmittions to wait for rx windows to close, and a backoff to pass
 - Make sure we stop unconfirmed transmissions if we get an ack
 - investiagte and implement aggregated duty cycle limits
-
+- what happens in real if app locig send another send request before retries etc is done?
 - mac command queue
 - Simulate DevStatusAns and get stubbattery iot from device
 - Implement channel hopping and expand channel simulation to accountr for busy channels
