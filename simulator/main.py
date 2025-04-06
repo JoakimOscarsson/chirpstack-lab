@@ -115,11 +115,7 @@ if __name__ == "__main__":
 """
 backlog:
 
-- check log format for ack received
-- Change retransmittions to wait for rx windows to close, and a backoff to pass
-- Make sure we stop unconfirmed transmissions if we get an ack
 - investiagte and implement aggregated duty cycle limits
-- what happens in real if app locig send another send request before retries etc is done?
 - mac command queue
 - Simulate DevStatusAns and get stubbattery iot from device
 - Implement channel hopping and expand channel simulation to accountr for busy channels
@@ -145,13 +141,8 @@ Refactoring needs:
 """
 
 Things to add:
-rd1_dr_offset - apply offset to uplink DR
-rx2_datarate - use in RX2 receive logic
-rx2_frequency - check in downlink accept logic
-RX timing - add asyc timers and match timing windows (though I want to always receive, but nly print a debug log if wrong timing)
 Simulate multi-divice crowdedness on channels
 update configuration when adding devices (include options to set more parameters)
-parse non mac commands to application logic and print there
 autojoin
 
 
