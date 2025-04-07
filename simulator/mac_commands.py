@@ -81,7 +81,7 @@ def decode_mac_command(cid: int, payload: bytes) -> dict:
         nbTrans = redundancy & 0x0F
         return {
             "DataRate_TXPower": dr_tx,
-            "ChMask": f"0x{ch_mask:04X}",
+            "ChMask": ch_mask,
             "Redundancy": redundancy,
             "NbTrans": nbTrans, 
         }

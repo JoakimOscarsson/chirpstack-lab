@@ -287,6 +287,12 @@ class LoRaWANStack:
 
         if not has_frmpayload:
             logger.info("                        No FPort/FRMPayload in downlink — MAC-only via FOpts.")
+            mac_response = self.mac_handler.get_mac_response_payload()
+            if mac_response:
+                async with self.send_lock:
+                    logger.info("        Sending MAC-only response uplink")
+                    await self._send(mac_response, fport=0, confirmed=False)
+
             return True
 
 
