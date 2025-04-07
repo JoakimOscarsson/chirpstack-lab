@@ -200,9 +200,19 @@ class MACCommandHandler:
                 battery = self.get_battery_callback()
             except Exception as e:
                 logger.warning(f"[MAC] Failed to get battery status: {e}")
-        
-        margin = self.radio.last_snr if hasattr(self.radio, 'last_snr') else 0
-        margin = max(-32, min(int(margin), 31))  # SNR margin capped as per spec
+
+        logger.info(f"last snr is {self.radio.last_snr}") 
+        snr = self.radio.last_snr if self.radio.last_snr else 0
+        demodulation_thresholds = {
+            7: -7.5,
+            8: -10,
+            9: -12.5,
+            10: -15,
+            11: -17.5,
+            12: -20,
+        }
+        demod_limit = demodulation_thresholds.get(self.radio.get_spreading_factor, -20)
+        margin = max(-32, min(int(snr - demod_limit), 31))
         payload = bytes([battery, margin & 0xFF])
         
         logger.info(f"                                 \033[95mQueuing DevStatusAns: Battery={battery}, Margin={margin}\033[0m")

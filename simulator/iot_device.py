@@ -61,7 +61,7 @@ class IotDevice:
         Periodically generate and send application payloads via the LoRaWAN stack.
         """
         while True:
-            require_ack = True
+            require_ack = False
             raw_payload = await self.generate_app_payload()
             logger.info(f"           \033[94mNew transmission from application. Require ACK: {require_ack}\033[0m")
             await self.lorawan_module.safe_send(raw_payload, confirmed = require_ack)

@@ -46,6 +46,8 @@ class LoRaWANStack:
 
         self.send_lock = asyncio.Lock()
 
+        self.pending_mac_response_bytes = None
+
         logger.info(f"    Initialized for DevAddr={dev_addr}")
 
     def set_uplink_interface(self, callback):
@@ -73,7 +75,25 @@ class LoRaWANStack:
             self.pending_fcnt = fcnt
             self.ack_event = asyncio.Event()
         
-        uplink_bytes = await self.protocol.build_uplink_frame(app_payload, fport, confirmed)
+        if self.pending_mac_response_bytes and len(self.pending_mac_response_bytes) <= 15:
+            fopts = self.pending_mac_response_bytes
+            logger.info(f"        \033[94mIncluding MAC response in FOpts: {fopts.hex()}\033[0m")
+            self.pending_mac_response_bytes = None
+            uplink_bytes = await self.protocol.build_uplink_frame(
+                app_payload, fport=fport, confirmed=confirmed, fopts=fopts
+            )
+
+        elif self.pending_mac_response_bytes:
+            uplink_bytes = await self.protocol.build_uplink_frame(
+                self.pending_mac_response_bytes, fport=0, confirmed=False
+            )
+            self.pending_mac_response_bytes = None
+        else:
+            uplink_bytes = await self.protocol.build_uplink_frame(
+                app_payload, fport, confirmed
+            )
+
+
         sf, bw = self.radio.get_spreading_factor(), self.radio.get_bandwidth()
         payload_size = len(uplink_bytes)
         airtime = calculate_airtime(payload_size, sf, bw)
@@ -243,6 +263,7 @@ class LoRaWANStack:
             return
         
         logger.info(f"                        Downlink accepted in {window} for DevAddr={self.dev_addr}")
+        self.radio.last_snr = envelope.snr
         await self._process_downlink(payload)
 
     async def _process_downlink(self, raw_bytes: bytes):
@@ -289,10 +310,9 @@ class LoRaWANStack:
             logger.info("                        No FPort/FRMPayload in downlink — MAC-only via FOpts.")
             mac_response = self.mac_handler.get_mac_response_payload()
             if mac_response:
-                async with self.send_lock:
-                    logger.info("        Sending MAC-only response uplink")
-                    await self._send(mac_response, fport=0, confirmed=False)
-
+                logger.info("                            Queuing MAC response for next uplink")
+                self.pending_mac_response_bytes = mac_response
+    
             return True
 
 
@@ -308,9 +328,8 @@ class LoRaWANStack:
             
             mac_response = self.mac_handler.get_mac_response_payload()
             if mac_response:
-                async with self.send_lock:
-                    logger.info("        Sending MAC-only response uplink")
-                    await self._send(mac_response, fport=0, confirmed=False)
+                logger.info("                            Queuing MAC response for next uplink")
+                self.pending_mac_response_bytes = mac_response
 
         else:
             logger.info(f"[LoRaWANStack] App payload (port {fport}): {frmpayload.hex()}")

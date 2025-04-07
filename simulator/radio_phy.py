@@ -32,6 +32,7 @@ class RadioPHY:
         self.tx_power = 14  # dBm
         self.max_eirp = 16  # Region-defined cap
         self.dwell_time_enabled = False
+        self.last_snr = None
 
         self.rx1_dr_offset = 0
         self.rx2_datarate = 0

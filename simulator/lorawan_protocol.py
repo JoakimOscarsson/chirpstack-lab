@@ -21,36 +21,49 @@ class LoRaWANProtocol:
         self.downlink_counter = 0
         self.joined = True  # Assume ABP for now
 
-    async def build_uplink_frame(self, payload: bytes, fport: int = 1, confirmed: bool = False) -> bytes:
+    async def build_uplink_frame(self, payload: bytes, fport: int = 1, confirmed: bool = False, fopts: bytes = b'') -> bytes:
         """
-        Construct the full PHYPayload for uplink.
+        Construct the full PHYPayload for uplink, with optional FOpts for MAC commands.
 
-        :param payload: Raw application payload (sensor data)
+        :param payload: Raw application payload (FRMPayload)
         :param fport: FPort value (0 = MAC-only, >0 = application)
         :param confirmed: Whether to mark as a confirmed uplink
+        :param fopts: Optional MAC command response bytes to include in FOpts (max 15 bytes)
         :return: Full PHYPayload bytes
         """
+        if len(fopts) > 15:
+            raise ValueError("FOpts too long (max 15 bytes allowed)")
+
         devaddr_bytes = bytes.fromhex(self.dev_addr)
         nwk_skey_bytes = bytes.fromhex(self.nwk_skey)
         app_skey_bytes = bytes.fromhex(self.app_skey)
 
         mhdr = b'\x80' if confirmed else b'\x40'
-        fctrl = b'\x00'
         fcnt = self.frame_counter.to_bytes(2, 'little')
+        fctrl = bytes([len(fopts)])  # FOptsLen in lower 4 bits
 
-        # Encrypt payload depending on port
-        if fport == 0:
-            encrypted_payload = encrypt_payload(payload, nwk_skey_bytes, devaddr_bytes, self.frame_counter, 0)
-        else:
-            encrypted_payload = encrypt_payload(payload, app_skey_bytes, devaddr_bytes, self.frame_counter, 0)
+        # Choose correct key for encryption based on FPort
+        key = nwk_skey_bytes if fport == 0 else app_skey_bytes
 
-        mac_payload = devaddr_bytes[::-1] + fctrl + fcnt + fport.to_bytes(1, 'big') + encrypted_payload
+        # Encrypt FRMPayload
+        encrypted_payload = encrypt_payload(payload, key, devaddr_bytes, self.frame_counter, 0)
+
+        # Build MACPayload: FHDR + optional FOpts + FPort + FRMPayload
+        mac_payload = (
+            devaddr_bytes[::-1] +
+            fctrl +
+            fcnt +
+            fopts +
+            fport.to_bytes(1, 'big') +
+            encrypted_payload
+        )
+
         mic = calculate_mic(mhdr + mac_payload, nwk_skey_bytes, devaddr_bytes, self.frame_counter)
-
         phy_payload = mhdr + mac_payload + mic
+
+        logger.debug(f"[LoRaWANProtocol] Built uplink payload with FCnt={self.frame_counter}, FOptsLen={len(fopts)}")
         self.frame_counter += 1
 
-        logger.debug(f"[LoRaWANProtocol] Built uplink payload with FCnt={self.frame_counter - 1}")
         return phy_payload
 
     def decrypt_downlink_payload(self, raw_bytes: bytes, fcnt: int, is_nwk: bool = False) -> bytes:

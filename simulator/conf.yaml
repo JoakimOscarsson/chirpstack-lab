@@ -12,6 +12,7 @@ devices:
 #  - devaddr: "26011BDB"
 #    distance: 2000
 #    environment: "suburban"
+#    send_interval: 12
     
 
 #  - devaddr: "26011BDC"
