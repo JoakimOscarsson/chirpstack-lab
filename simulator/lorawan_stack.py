@@ -4,7 +4,7 @@ import random
 from radio_phy import RadioPHY
 from lorawan_protocol import LoRaWANProtocol
 from mac_commands import MACCommandHandler, parse_mac_commands
-from utils import RadioEnvelope, calculate_airtime
+from utils import RadioEnvelope, calculate_airtime, dr_to_sf_bw
 from typing import Optional
 from channel_simulator import ChannelSimulator
 
@@ -248,16 +248,22 @@ class LoRaWANStack:
         if payload is None:
             logger.info(f"                        \033[91mDownlink dropped for DevAddr={self.dev_addr}\033[0m")
             return
+        
+        uplink_dr_index = self.radio.data_rate
+        expected_rx1_dr = self.radio.get_rx1_datarate(uplink_dr_index)
+        rx1_sf, rx1_bw = dr_to_sf_bw(expected_rx1_dr)
+        expected_rx1_datr = f"SF{rx1_sf}BW{rx1_bw}"
+
         rx1_freq = self.radio.get_current_frequency()
         rx2_freq = self.radio.rx2_frequency
-        if self.rx1_open and int(envelope.freq * 1e6) == rx1_freq:
+        if self.rx1_open and int(envelope.freq * 1e6) == rx1_freq and envelope.data_rate == expected_rx1_datr:
             window = "RX1"
         elif self.rx2_open and int(envelope.freq * 1e6) == rx2_freq:
             window = "RX2"
         else:
             logger.warning(
-                f"[LoRaWANStack] Downlink ignored (no window open or freq mismatch) for Devaddr={devaddr}: "
-                f"Freq={envelope.freq * 1e6} MHz, RX1={rx1_freq}, RX2={rx2_freq}"
+                f"[LoRaWANStack] Downlink ignored (no window open or freq/DR mismatch) for Devaddr={devaddr}: "
+                f"Freq={envelope.freq * 1e6} MHz, DR={envelope.data_rate}, expected RX1 DR={expected_rx1_datr}, RX1={rx1_freq}, RX2={rx2_freq}"
                 f"RX1 open={self.rx1_open}, RX2 open={self.rx2_open}"
             )
             return

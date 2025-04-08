@@ -47,6 +47,11 @@ class RadioPHY:
         self.aggregated_duty_cycle = 1  # 1.0 = no limit
         self.next_tx_time = defaultdict(lambda: 0.0)
 
+    def get_rx1_datarate(self, uplink_datarate: int) -> int:
+        """Compute RX1 datarate from uplink DR and RX1 offset (clamped)."""
+        rx1_dr = uplink_datarate - self.rx1_dr_offset
+        return max(0, min(rx1_dr, 5))  # assuming DR0–DR5 are legal in EU868
+
     def set_max_duty_cycle(self, duty_cycle: float):
         self.aggregated_duty_cycle = duty_cycle
         logger.info(f"                                    \033[95mUpdated aggregated duty cycle to {self.aggregated_duty_cycle}.\033[0m")

@@ -115,10 +115,11 @@ if __name__ == "__main__":
 """
 backlog:
 
-- add last snr to dev status
 
 - Implement channel hopping and expand channel simulation to accountr for busy channels
-
+- Add support for adr through config
+- add callback to app for downlink
+- add battery drain simulation
 - Add choice to set init DR
 
 
@@ -143,6 +144,56 @@ Things to add:
 Simulate multi-divice crowdedness on channels
 update configuration when adding devices (include options to set more parameters)
 autojoin
+
+
+
+Implement RX1 DR offset logic (uplink DR - offset, clamped)
+
+Validate MIC of downlinks using NwkSKey
+
+Add random RX window jitter / simulate device clock drift
+
+Add channel collision detection in ChannelSimulator
+
+Switch environment to Enum and validate inputs
+
+Move device + radio config to dataclass or config object
+
+Add optional battery drain model
+
+Implement basic OTAA join simulation
+
+Add metrics logging/export (e.g., total TXs, ACK rate, duty cycle violations)
+
+CLI config runner or YAML-based test case runner
+
+
+
+
+1 (High)
+Implement collision/interference logic
+Reflect actual packet loss from overlapping transmissions.
+2 (High)
+OTAA join procedure
+Align with typical real-world LoRaWAN flow & dynamic keys.
+3 (Med)
+Advanced path-loss & environment model
+Improve realism (Okumura-Hata, terrain, obstacles, etc.).
+4 (Med)
+Battery drain simulation
+Provide a realistic â€œDevStatusâ€ response and device behavior.
+5 (Med)
+Expand MAC commands & ADR
+Let the network server adapt SF & power fully in real time.
+6 (Low)
+Multi-gateway or multi-region support
+Explore network coverage / collisions from multiple gateways.
+7 (Low)
+Scalability & performance approach
+Support 100s or 1000s of IoT devices without performance hits.
+8 (Low)
+Visualization / Dashboard
+Graphical overview of transmissions, SNR, collisions, etc.
 
 
 
